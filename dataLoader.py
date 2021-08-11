@@ -2,36 +2,33 @@ import ast
 import random
 import os
 import csv
-import sys
 import cv2
 import numpy as np
 import pydicom
 import torch
-import torchvision.transforms as transforms
+from pydicom.pixel_data_handlers import apply_voi_lut
 from torch.utils.data import DataLoader
 ################################################
 
 class DataSetTrain():
-    def __init__(self, trainPaths, boundingBoxes, truths):
+    def __init__(self, trainPaths, boundingBoxes, truths, demo):
         self.trainPaths = trainPaths
         self.boundingBoxes = boundingBoxes
         self.truths = truths
-        self.transform = transforms.Compose([
-            transforms.Resize(128),
-            transforms.CenterCrop(128)])
+        self.demo = demo
 
     def __getitem__(self, index):
-
-        box = self.boundingBoxes[index]
-        truth = self.truths[index]
-
-        image_file = pydicom.dcmread(self.trainPaths[index])
-        image = np.array(image_file.pixel_array, dtype=np.float32)[np.newaxis]
-        image = torch.from_numpy(image)
-        image = self.transform(image)
-        image = torch.squeeze(image)
-
-        return image, box, int(truth)
+        try:
+            box = self.boundingBoxes[index]
+            truth = self.truths[index]
+            image_orig = np.float32(dicom2array(self.trainPaths[index]))
+            image = cv2.resize(image_orig, (128, 128))
+            if self.demo:
+                return image, box, int(truth), image_orig
+            else:
+                return image, box, int(truth)
+        except:
+            return None
 
     def __len__(self):
         return len(self.trainPaths)
@@ -43,19 +40,16 @@ class DataSetTest():
         self.trainPaths = trainPaths
 
     def __getitem__(self, index):
-        image_file = pydicom.dcmread(self.trainPaths[index])
-        image = np.array(image_file.pixel_array, dtype=np.float32)[np.newaxis]
-        image = torch.from_numpy(image)
-        image = self.transform(image)
-        image = torch.squeeze(image)
-        return image
+        image_orig = np.float32(dicom2array(self.trainPaths[index]))
+        image = cv2.resize(image_orig, (128, 128))
+        return image, image_orig
 
     def __len__(self):
         return len(self.trainPaths)
 
 ################################################
 
-def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9):
+def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9, demo = False):
     print("-> Load Data...")
 
     pathCSV = "data/train_image_level.csv"
@@ -102,9 +96,9 @@ def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9):
     boundingBoxes = []
     truths = []
     testDir = "data/train"
+    counter = 0
     for folder in os.scandir(testDir):
         for subfolder in os.scandir(folder):
-
             for file in os.scandir(subfolder):
                 trainPaths.append(file.path)
                 image = str(os.path.basename(file)).replace(".dcm", "_image")
@@ -134,19 +128,18 @@ def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9):
     separation = int(len(trainPaths) * split)
 
     # For training
-    dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation])
-    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True)
+    dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], demo=demo)
+    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True, collate_fn=collate_fn)
 
     # For testing
-    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:])
-    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True)
+    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo = demo)
+    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True, collate_fn=collate_fn)
 
     # For actual evaluation set
     dataset_Test_Eval = DataSetTest(testPaths)
     dataloader_Test_Eval = DataLoader(dataset=dataset_Test_Eval, batch_size=BATCH, shuffle=True)
 
     return dataloader_Train, dataloader_Test, dataloader_Test_Eval
-
 
 def getCoordinatesFromBox(box):
     try:
@@ -158,3 +151,19 @@ def getCoordinatesFromBox(box):
     except:
         return np.array([0, 0, 1, 1])
 
+def dicom2array(path, voi_lut=True, fix_monochrome=True):
+    dicom = pydicom.read_file(path)
+    if voi_lut:
+        data = apply_voi_lut(dicom.pixel_array, dicom)
+    else:
+        data = dicom.pixel_array
+    if fix_monochrome and dicom.PhotometricInterpretation == "MONOCHROME1":
+        data = np.amax(data) - data
+    data = data - np.min(data)
+    data = data / np.max(data)
+    data = (data * 255).astype(np.uint8)
+    return data
+
+def collate_fn(batch):
+    batch = list(filter(lambda x: x is not None, batch))
+    return torch.utils.data.dataloader.default_collate(batch)
