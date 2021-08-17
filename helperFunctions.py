@@ -133,15 +133,16 @@ def testLoop(model, test_dataloader, counter_test, writer):
 
 def getHeatMap(img, box):
 
+    kernel = np.array([[0, 0, 1, 0, 0],[0, 1, 1, 1, 0],[1, 1, 1, 1, 1],[0, 1, 1, 1, 0],[0, 0, 1, 0, 0]]).astype(np.uint8)
     heat = torch.zeros_like(img)
     sy, sx, ey, ex = box
     sx, sy, ex, ey = int(sx), int(sy), int(ex), int(ey)
     heat[sx:ex, sy:ey] += 1
-    heat = cv2.GaussianBlur(np.array(heat) ,(5, 5), 0)
+    heat = cv2.dilate(np.float32(heat), kernel= kernel, iterations=1)
+    heat = cv2.GaussianBlur(np.array(heat) ,(5, 5), sigmaX=0)
     return heat
 
 ############################################################################
 
 def getBoxFromHeatMap(heat):
-
-    return box
+    return None
