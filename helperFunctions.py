@@ -1,3 +1,6 @@
+import sys
+
+import cv2
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -30,7 +33,7 @@ def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
     ex = ex * scaleY
     ey = ey * scaleX
 
-    return [sx, sy, ex, ey]
+    return torch.tensor([sx, sy, ex, ey])
 
 ############################################################################
 
@@ -84,27 +87,22 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
 
     testLoop(model, test_dataloader, counter_test, writer)
     counter_test += 1
-
     lossBoxes = nn.MSELoss()
     lossLabels = nn.CrossEntropyLoss()
     for epoch in range(0, epochs):
         print(" Epoch:  ", epoch)
         iterator = iter(train_dataloader)
         for index in trange(0, len(train_dataloader)):
-            image, box, truth = iterator.next()
+            image, heat_resized, truth, box = iterator.next()
             optimizer.zero_grad()
-            box_pred, label_pred = model(image)
-
-            loss1 = lossBoxes(box_pred.double(), box.double())
+            heat_pred, label_pred = model(image)
+            loss1 = lossBoxes(heat_pred.double(), box.double())
             loss2 = lossLabels(label_pred, truth)
-
             if epoch == 0 and index == 0:
                 W = float((loss1 / loss2))
-
             LOSS = loss1 + (W * loss2)
             LOSS.backward()
             optimizer.step()
-
         testLoop(model, test_dataloader, counter_test, writer)
         counter_test += 1
         torch.save(model, pathModel)
@@ -112,18 +110,16 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
 ############################################################################
 
 def testLoop(model, test_dataloader, counter_test, writer):
-
     print("Test ", counter_test)
     lossBoxes = nn.MSELoss()
     lossLabels = nn.CrossEntropyLoss()
     iterator = iter(test_dataloader)
-
     losses1 = []
     losses2 = []
     for index in range(0, len(test_dataloader)):
-        image, box, truth = iterator.next()
-        box_pred, label_pred = model(image)
-        loss1 = lossBoxes(box_pred, box)
+        image, heat_resized, truth, box = iterator.next()
+        heat_pred, label_pred = model(image)
+        loss1 = lossBoxes(heat_pred, heat_resized)
         loss2 = lossLabels(label_pred, truth)
         losses1.append(float(loss1))
         losses2.append(float(loss2))
@@ -132,3 +128,20 @@ def testLoop(model, test_dataloader, counter_test, writer):
     loss2 = np.mean(np.array(losses2))
     writer.add_scalar('BoxLoss/test/', loss1, counter_test)
     writer.add_scalar('LabelLoss/test/', loss2, counter_test)
+
+############################################################################
+
+def getHeatMap(img, box):
+
+    heat = torch.zeros_like(img)
+    sy, sx, ey, ex = box
+    sx, sy, ex, ey = int(sx), int(sy), int(ex), int(ey)
+    heat[sx:ex, sy:ey] += 1
+    heat = cv2.GaussianBlur(np.array(heat) ,(5, 5), 0)
+    return heat
+
+############################################################################
+
+def getBoxFromHeatMap(heat):
+
+    return box

@@ -12,9 +12,9 @@ class model1(nn.Module):
         self.relu = nn.ReLU()
 
         #Box
-        self.fc_out_box = nn.Linear(16, 4)
+        self.fc_out_box = nn.Linear(256, 4)
         #Label
-        self.fc_out_labels = nn.Linear(16, 4)
+        self.fc_out_labels = nn.Linear(256, 4)
 
     def forward(self, x):
         x = torch.unsqueeze(x, 1)
