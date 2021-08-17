@@ -22,30 +22,30 @@ class DataSetTrain():
 
     def __getitem__(self, index):
 
-        try:
-            truth = self.truths[index]
-            image_orig = np.float32(dicom2array(self.trainPaths[index]))
-            image = cv2.resize(image_orig, (448, 448))
-            box = self.boundingBoxes[index]
-            heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
-            sx, sy, ex, ey = box
-            x, y = image.shape
-            x1, y1 = image_orig.shape
-            scaleX = x / x1
-            scaleY = y / y1
-            sx = sx * scaleY
-            sy = sy * scaleX
-            ex = ex * scaleY
-            ey = ey * scaleX
-            box_pred_origsize = [sx, sy, ex, ey]
-            heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
-            if self.demo:
-                return image, image_orig, heat_resized, heat_orig, int(truth), box
-            else:
-                return image, heat_resized, int(truth), box
+        #try:
+        truth = self.truths[index]
+        image_orig = np.float32(dicom2array(self.trainPaths[index]))
+        image = cv2.resize(image_orig, (448, 448))
+        box = self.boundingBoxes[index]
+        heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
+        sx, sy, ex, ey = box
+        x, y = image.shape
+        x1, y1 = image_orig.shape
+        scaleX = x / x1
+        scaleY = y / y1
+        sx = sx * scaleY
+        sy = sy * scaleX
+        ex = ex * scaleY
+        ey = ey * scaleX
+        box_pred_origsize = [sx, sy, ex, ey]
+        heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
+        if self.demo:
+            return image, image_orig, heat_resized, heat_orig, int(truth), box
+        else:
+            return image, heat_resized, int(truth), box
 
-        except:
-            return None
+        #except:
+        #    return None
 
     def __len__(self):
         return len(self.trainPaths)
