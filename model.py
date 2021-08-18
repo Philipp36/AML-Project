@@ -75,8 +75,9 @@ class AmerLocHead(nn.Module):
 
         x = self.loc2(x + y)
         x = self.loc3(x + z)
-        x, _ = torch.max(x, dim=1, keepdim=False)
-        return x
+        x, _ = torch.max(x, dim=1, keepdim=True)
+        up = nn.Upsample(size=(448, 448), mode='nearest')
+        return up(x).squeeze()
 
 
 class AmerModel(nn.Module):
@@ -87,14 +88,15 @@ class AmerModel(nn.Module):
         self.backbone = AmerBackbone()
         self.det_head = nn.Sequential(nn.Flatten(),
                                       nn.Linear(in_features=2048, out_features=1024),
+                                      nn.ReLU(),
                                       nn.Dropout(p=0.3),
                                       nn.Linear(in_features=1024, out_features=256),
-                                      nn.Linear(in_features=256, out_features=5),
-                                      nn.Softmax())
+                                      nn.ReLU(),
+                                      nn.Linear(in_features=256, out_features=4))
         self.loc_head = AmerLocHead()
 
     def forward(self, x):
-        x = x.unsqueeze(0)
+        x = x.unsqueeze(1)
         x = x.expand(-1, 3, -1, -1)
         (act56, act28, act14), x = self.backbone(x)
         return self.loc_head(act14, act28, act56), self.det_head(x)

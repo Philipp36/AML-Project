@@ -6,7 +6,7 @@ from tqdm import trange
 
 from dataLoader import createDataset_300W_LP
 from helperFunctions import *
-from model import model1
+from model import AmerModel
 from torch.utils.tensorboard import SummaryWriter
 ################################################
 
@@ -15,7 +15,7 @@ def main(args):
     modelType = args.modelType
     pathModel = "weights/model.pth"
 
-    train_dataloader, test_dataloader, eval_dataloader =  createDataset_300W_LP(dataSize=1, BATCH=32, split=0.8, demo = False)
+    train_dataloader, test_dataloader, eval_dataloader =  createDataset_300W_LP(dataSize=1, BATCH=16, split=0.8, demo = False)
     print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:", len(eval_dataloader))
 ################################################
 
@@ -28,7 +28,7 @@ def main(args):
             raise ValueError('Model not found!')
     else:
         print("-> Create New Model...")
-        model = model1()
+        model = AmerModel()
 
 ################################################
     epochs = 5

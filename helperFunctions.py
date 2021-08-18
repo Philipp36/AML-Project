@@ -98,7 +98,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             image, heat_resized, truth, box = iterator.next()
             optimizer.zero_grad()
             heat_pred, label_pred = model(image)
-            loss1 = lossBoxes(heat_pred.double(), box.double())
+            loss1 = lossBoxes(heat_pred.double(), heat_resized.double())
             loss2 = lossLabels(label_pred, truth)
             #if epoch == 0 and index == 0:
             #    W = float((loss1 / loss2))
