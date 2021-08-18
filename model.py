@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torchvision import models
 
 
 class model1(nn.Module):
@@ -35,3 +36,65 @@ class model1(nn.Module):
         box = self.fc_out_box(x)
         labels = self.fc_out_labels(x)
         return box, labels
+
+
+class AmerBackbone(nn.Module):
+
+    def __init__(self):
+        super(AmerBackbone, self).__init__()
+
+        backbone = models.resnet50(pretrained=True, progress=True)
+        out_channels = backbone.fc.in_features
+        self.layers = list(backbone.children())[:-1]  # + [nn.AvgPool2d(kernel_size=(7, 7), stride=1, padding=0)]
+
+    def forward(self, x):
+        m1 = nn.Sequential(*self.layers[:-4])
+        x = m1(x)
+        x = act56 = self.layers[-4](x)
+        x = act28 = self.layers[-3](x)
+        x = act14 = self.layers[-2](x)
+        x = self.layers[-1](x)
+        return (act56, act28, act14), x
+
+
+class AmerLocHead(nn.Module):
+
+    def __init__(self):
+        super(AmerLocHead, self).__init__()
+
+        self.loc1 = nn.Sequential(nn.Upsample(mode='nearest', scale_factor=(2, 2)),
+                                  nn.Conv2d(kernel_size=(1, 1), stride=1, in_channels=2048, out_channels=1024))
+        self.loc2 = nn.Sequential(nn.Upsample(mode='nearest', scale_factor=(2, 2)),
+                                  nn.Conv2d(kernel_size=(1, 1), stride=1, in_channels=1024, out_channels=512))
+        self.loc3 = nn.Sequential(nn.Upsample(mode='nearest', scale_factor=(2, 2)),
+                                  nn.Conv2d(kernel_size=(3, 3), stride=2, in_channels=512, out_channels=128),
+                                  nn.ReLU(inplace=True))
+
+    def forward(self, x, y, z):
+        x = self.loc1(x)
+
+        x = self.loc2(x + y)
+        x = self.loc3(x + z)
+        x, _ = torch.max(x, dim=1, keepdim=False)
+        return x
+
+
+class AmerModel(nn.Module):
+
+    def __init__(self):
+        super(AmerModel, self).__init__()
+
+        self.backbone = AmerBackbone()
+        self.det_head = nn.Sequential(nn.Flatten(),
+                                      nn.Linear(in_features=2048, out_features=1024),
+                                      nn.Dropout(p=0.3),
+                                      nn.Linear(in_features=1024, out_features=256),
+                                      nn.Linear(in_features=256, out_features=5),
+                                      nn.Softmax())
+        self.loc_head = AmerLocHead()
+
+    def forward(self, x):
+        x = x.unsqueeze(0)
+        x = x.expand(-1, 3, -1, -1)
+        (act56, act28, act14), x = self.backbone(x)
+        return self.loc_head(act14, act28, act56), self.det_head(x)
