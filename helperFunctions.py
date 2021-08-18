@@ -100,9 +100,9 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             heat_pred, label_pred = model(image)
             loss1 = lossBoxes(heat_pred.double(), box.double())
             loss2 = lossLabels(label_pred, truth)
-            if epoch == 0 and index == 0:
-                W = float((loss1 / loss2))
-            LOSS = loss1 + (W * loss2)
+            #if epoch == 0 and index == 0:
+            #    W = float((loss1 / loss2))
+            LOSS = loss1 + loss2 #(W * loss2)
             LOSS.backward()
             optimizer.step()
             losses1.append(float(loss1))
