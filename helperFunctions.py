@@ -92,6 +92,8 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
     for epoch in range(0, epochs):
         print(" Epoch:  ", epoch)
         iterator = iter(train_dataloader)
+        losses1 = []
+        losses2 = []
         for index in trange(0, len(train_dataloader)):
             image, heat_resized, truth, box = iterator.next()
             optimizer.zero_grad()
@@ -103,6 +105,13 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             LOSS = loss1 + (W * loss2)
             LOSS.backward()
             optimizer.step()
+            losses1.append(float(loss1))
+            losses2.append(float(loss2))
+
+        loss1 = np.mean(np.array(losses1))
+        loss2 = np.mean(np.array(losses2))
+        writer.add_scalar('BoxLoss/train/', loss1, epoch)
+        writer.add_scalar('LabelLoss/train/', loss2, epoch)
         testLoop(model, test_dataloader, counter_test, writer)
         counter_test += 1
         torch.save(model, pathModel)
