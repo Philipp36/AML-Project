@@ -1,0 +1,26 @@
+dataset:
+  dataset_train_path: data/train
+  dataset_test_path: data/test
+  metadata_image_path: data/train_image_level.csv
+  metadata_study_path: data/train_study_level.csv
+  split: 0.8 # currently used for validation split
+  demo: False
+  data_size: 1
+
+model:
+  model_name: Amer
+  model_path: weights/model.pth # TODO: split up into model path and weights path?
+  # if set to True, tries to load weights stored at model_path
+  pretrained: True
+
+optimizer:
+  lr: 1.0e-3
+  eps: 1.0e-8
+
+train:
+  batch_size: 2
+  epochs: 2
+  validation_split: 0.8 # currently not used
+
+test:
+  batch_size: 2 # currently not used (same as train/batch_size)
