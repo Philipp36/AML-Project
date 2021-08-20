@@ -1,5 +1,6 @@
 import argparse
 import sys
+import yaml
 
 import numpy as np
 import torch
@@ -9,17 +10,19 @@ from helperFunctions import *
 from model import model1
 ################################################
 
-def main(args):
 
-    modelType = args.modelType
-    train_dataloader, test_dataloader, eval_dataloader =  createDataset_300W_LP(dataSize=0.04, BATCH=1, split=0.8, demo = True)
+def main():
+    pretrained = False
+    model_path = config['model']['model_path']
+    train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**{key: val for key, val in config['dataset'].items() if 'path' in key}, data_size=0.04, BATCH=1, split=0.8,
+                                                                               demo=True)
     print("#Train Batches:", len(train_dataloader.dataset), "#Test Batches:", len(test_dataloader.dataset), "#Eval Batches:", len(eval_dataloader.dataset))
 ################################################
 
-    if modelType == "TRAINED":
+    if pretrained:
         print("-> Load trained model...")
         try:
-            model = torch.load("weights/model.pth")
+            model = torch.load(model_path)
         except Exception as e:
             print(e)
             raise ValueError('Model not found!')
@@ -47,13 +50,16 @@ def main(args):
         print("Predicted Label:  ", int(torch.argmax(label_pred)))
 
         # You can decide wheter to plot the original size image, or the resized
-        #drawSample(image, imageOrig, box, box_pred, originalSize = True)
-        drawSample(truth_heatMap_resized, truth_heatMap_origsize, box, box_pred, originalSize=False)
+        drawSample(image, imageOrig, box, box_pred, originalSize = True)
+        #drawSample(truth_heatMap_resized, truth_heatMap_origsize, box, box_pred, originalSize=False)
 
 ################################################
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-f', '--modelType', type=str, default="NEW", help="NEW or TRAINED")
+    parser.add_argument('-f', '--config', type=str, default="config.yml", help="path to the config file")
     args = parser.parse_args()
-    main(args)
+    with open(args.config, 'r') as f:
+        config = yaml.load(f, Loader=yaml.Loader)
+    main()

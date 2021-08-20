@@ -8,21 +8,23 @@ from dataLoader import createDataset_300W_LP
 from helperFunctions import *
 from model import AmerModel
 from torch.utils.tensorboard import SummaryWriter
+
+import yaml
 ################################################
 
-def main(args):
 
-    modelType = args.modelType
-    pathModel = "weights/model.pth"
-
-    train_dataloader, test_dataloader, eval_dataloader =  createDataset_300W_LP(dataSize=1, BATCH=16, split=0.8, demo = False)
+def main():
+    pretrained = config['model']['pretrained']
+    model_path = config['model']['model_path']
+    train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
+                                                                               BATCH=config['train']['batch_size'])
     print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:", len(eval_dataloader))
 ################################################
 
-    if modelType == "TRAINED":
+    if pretrained:
         print("-> Load trained model...")
         try:
-            model = torch.load("weights/model.pth")
+            model = torch.load(model_path)
         except Exception as e:
             print(e)
             raise ValueError('Model not found!')
@@ -31,22 +33,25 @@ def main(args):
         model = AmerModel()
 
 ################################################
-    epochs = 5
-    optimizer = optim.Adam(model.parameters())
+    epochs = config['train']['epochs']
+    optimizer = optim.Adam(model.parameters(), **config['optimizer'])
 
     writer = SummaryWriter()
     counter_test = 0
 
     print("")
-    trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, pathModel)
+    trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, model_path)
     print("")
 
     print("-> Save trained model...")
-    torch.save(model, pathModel)
+    torch.save(model, model_path)
 ################################################
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-f', '--modelType', type=str, default="NEW", help="NEW or TRAINED")
+    parser.add_argument('-f', '--config', type=str, default="config.yml", help="path to the config file")
     args = parser.parse_args()
-    main(args)
+    with open(args.config, 'r') as f:
+        config = yaml.load(f, Loader=yaml.Loader)
+    main()

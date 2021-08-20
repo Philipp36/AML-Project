@@ -52,6 +52,7 @@ class DataSetTrain():
 
 ################################################
 
+
 class DataSetTest():
     def __init__(self, trainPaths):
         self.trainPaths = trainPaths
@@ -67,11 +68,12 @@ class DataSetTest():
 
 ################################################
 
-def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9, demo = False):
+
+def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_path, metadata_study_path, data_size=1.0,
+                          BATCH=64, split=0.9, demo=False):
     print("-> Load Data...")
 
-    pathCSV = "data/train_image_level.csv"
-    reader = csv.reader(open(pathCSV, 'r'))
+    reader = csv.reader(open(metadata_image_path, 'r'))
     id=[]
     boxes=[]
     label=[]
@@ -85,8 +87,7 @@ def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9, demo = False):
             studyID.append(row[3])
         counter +=1
 
-    pathCSV = "data/train_study_level.csv"
-    reader = csv.reader(open(pathCSV, 'r'))
+    reader = csv.reader(open(metadata_study_path, 'r'))
     counter = 0
 
     id_label=[]
@@ -102,8 +103,7 @@ def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9, demo = False):
 
     testPaths=[]
     testImages = []
-    testDir = "data/test"
-    for folder in os.scandir(testDir):
+    for folder in os.scandir(dataset_test_path):
         for subfolder in os.scandir(folder):
             for file in os.scandir(subfolder):
                 testPaths.append(file.path)
@@ -113,9 +113,8 @@ def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9, demo = False):
     trainImages = []
     boundingBoxes = []
     truths = []
-    testDir = "data/train"
     counter = 0
-    for folder in os.scandir(testDir):
+    for folder in os.scandir(dataset_train_path):
         for subfolder in os.scandir(folder):
             for file in os.scandir(subfolder):
                 trainPaths.append(file.path)
@@ -136,11 +135,11 @@ def createDataset_300W_LP(dataSize=1.0, BATCH=64, split=0.9, demo = False):
     trainPaths, boundingBoxes, truths = zip(*c)
 
     # If we do not want to use 100% of the data
-    lim = int(len(trainPaths)*dataSize)
+    lim = int(len(trainPaths) * data_size)
     trainPaths = trainPaths[:lim]
     boundingBoxes = boundingBoxes[:lim]
     truths = truths[:lim]
-    testPaths = testPaths[:int(len(testPaths)*dataSize)]
+    testPaths = testPaths[:int(len(testPaths) * data_size)]
 
     # Split training set into train and test
     separation = int(len(trainPaths) * split)
