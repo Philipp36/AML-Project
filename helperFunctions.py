@@ -83,9 +83,9 @@ def drawSample(IMG, IMG_ORIG, box_true, box_pred, originalSize = False):
 
 ############################################################################
 
-def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, pathModel):
+def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, pathModel, dev=torch.device('cpu')):
 
-    testLoop(model, test_dataloader, counter_test, writer)
+    testLoop(model, test_dataloader, counter_test, writer, dev=dev)
     counter_test += 1
     lossBoxes = nn.MSELoss()
     lossLabels = nn.CrossEntropyLoss()
@@ -96,6 +96,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
         losses2 = []
         for index in trange(0, len(train_dataloader)):
             image, heat_resized, truth, box = iterator.next()
+            image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
             optimizer.zero_grad()
             heat_pred, label_pred = model(image)
             loss1 = lossBoxes(heat_pred.double(), heat_resized.double())
@@ -112,13 +113,13 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
         loss2 = np.mean(np.array(losses2))
         writer.add_scalar('BoxLoss/train/', loss1, epoch)
         writer.add_scalar('LabelLoss/train/', loss2, epoch)
-        testLoop(model, test_dataloader, counter_test, writer)
+        testLoop(model, test_dataloader, counter_test, writer, dev=dev)
         counter_test += 1
         torch.save(model, pathModel)
 
 ############################################################################
 
-def testLoop(model, test_dataloader, counter_test, writer):
+def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu')):
     print("Test ", counter_test)
     lossBoxes = nn.MSELoss()
     lossLabels = nn.CrossEntropyLoss()
@@ -127,6 +128,7 @@ def testLoop(model, test_dataloader, counter_test, writer):
     losses2 = []
     for index in range(0, len(test_dataloader)):
         image, heat_resized, truth, box = iterator.next()
+        image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
         heat_pred, label_pred = model(image)
         loss1 = lossBoxes(heat_pred, heat_resized)
         loss2 = lossLabels(label_pred, truth)
