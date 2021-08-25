@@ -1,13 +1,16 @@
 import argparse
+import sys
+
 import numpy as np
 import torch
 from torch import optim, nn
 from tqdm import trange
-
+import pytorch_lightning as pl
 from dataLoader import createDataset_300W_LP
 from helperFunctions import *
 from model import AmerModel
 from torch.utils.tensorboard import SummaryWriter
+
 
 import yaml
 ################################################
@@ -32,17 +35,16 @@ def main():
     else:
         print("-> Create New Model...")
         model = AmerModel()
+
     model.to(dev)
 
 ################################################
     epochs = config['train']['epochs']
-    optimizer = optim.Adam(model.parameters(), **config['optimizer'])
-
-    writer = SummaryWriter()
-    counter_test = 0
 
     print("")
-    trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, model_path, dev=dev)
+    modelTrainer = trainerLightning(model, config, dev = dev)
+    trainer = pl.Trainer(max_epochs=epochs, check_val_every_n_epoch=1 , profiler="advanced")
+    trainer.fit(modelTrainer, train_dataloader, test_dataloader)
     print("")
 
     print("-> Save trained model...")
