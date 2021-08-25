@@ -16,6 +16,7 @@ import yaml
 def main():
     pretrained = config['model']['pretrained']
     model_path = config['model']['model_path']
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
                                                                                BATCH=config['train']['batch_size'])
     print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:", len(eval_dataloader))
@@ -31,6 +32,7 @@ def main():
     else:
         print("-> Create New Model...")
         model = AmerModel()
+    model.to(dev)
 
 ################################################
     epochs = config['train']['epochs']
@@ -40,7 +42,7 @@ def main():
     counter_test = 0
 
     print("")
-    trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, model_path)
+    trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, model_path, dev=dev)
     print("")
 
     print("-> Save trained model...")
