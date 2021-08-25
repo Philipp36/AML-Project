@@ -45,15 +45,19 @@ class AmerBackbone(nn.Module):
 
         backbone = models.resnet50(pretrained=True, progress=True)
         out_channels = backbone.fc.in_features
-        self.layers = list(backbone.children())[:-1]  # + [nn.AvgPool2d(kernel_size=(7, 7), stride=1, padding=0)]
+        layers = list(backbone.children())[:-1]  # + [nn.AvgPool2d(kernel_size=(7, 7), stride=1, padding=0)]
+        self.core = nn.Sequential(*layers[:-4])
+        self.act56 = layers[-4]
+        self.act28 = layers[-3]
+        self.act14 = layers[-2]
+        self.out = layers[-1]
 
     def forward(self, x):
-        m1 = nn.Sequential(*self.layers[:-4])
-        x = m1(x)
-        x = act56 = self.layers[-4](x)
-        x = act28 = self.layers[-3](x)
-        x = act14 = self.layers[-2](x)
-        x = self.layers[-1](x)
+        x = self.core(x)
+        x = act56 = self.act56(x)
+        x = act28 = self.act28(x)
+        x = act14 = self.act14(x)
+        x = self.out(x)
         return (act56, act28, act14), x
 
 
