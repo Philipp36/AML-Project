@@ -30,16 +30,15 @@ def main():
         print("-> Create New Model...")
         model = AmerModel()
 
-    model.to(dev)
-
 ################################################
 
     epochs = config['train']['epochs']
 
     print("")
     logger = TensorBoardLogger(save_dir='runs', name='', default_hp_metric=False)
-    modelTrainer = trainerLightning(model, config, dev = dev)
-    trainer = pl.Trainer(max_epochs=epochs, check_val_every_n_epoch=1, log_every_n_steps=len(train_dataloader), logger=logger, profiler="simple")
+    modelTrainer = trainerLightning(model, config, dev=dev)
+    trainer = pl.Trainer(max_epochs=epochs, check_val_every_n_epoch=1, log_every_n_steps=len(train_dataloader),
+                         logger=logger, profiler="simple", gpus=1 if torch.cuda.is_available() else 0)
     trainer.fit(modelTrainer, train_dataloader, test_dataloader)
     print("")
     print("-> Save trained model...")
