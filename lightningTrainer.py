@@ -23,7 +23,6 @@ class trainerLightning(pl.LightningModule):
         self.log("HeatMapLoss/Train", loss1)
         self.log("LabelLoss/Train", loss2)
         LOSS = loss1 + loss2
-        self.prof.step()
         return LOSS
 
     def validation_step(self, batch, batch_idx):
