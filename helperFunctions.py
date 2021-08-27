@@ -145,7 +145,7 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
 def getHeatMap(img, box):
 
     kernel = np.array([[0, 0, 1, 0, 0],[0, 1, 1, 1, 0],[1, 1, 1, 1, 1],[0, 1, 1, 1, 0],[0, 0, 1, 0, 0]]).astype(np.uint8)
-    heat = torch.zeros_like(img)
+    heat = torch.zeros(img.shape[:2])
     sy, sx, ey, ex = box
     sx, sy, ex, ey = int(sx), int(sy), int(ex), int(ey)
     heat[sx:ex, sy:ey] += 1
