@@ -22,30 +22,30 @@ class DataSetTrain():
 
     def __getitem__(self, index):
 
-        #try:
-        truth = self.truths[index]
-        image_orig = np.float32(dicom2array(self.trainPaths[index]))
-        image = cv2.resize(image_orig, (448, 448))
-        box = self.boundingBoxes[index]
-        heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
-        sx, sy, ex, ey = box
-        x, y = image.shape
-        x1, y1 = image_orig.shape
-        scaleX = x / x1
-        scaleY = y / y1
-        sx = sx * scaleY
-        sy = sy * scaleX
-        ex = ex * scaleY
-        ey = ey * scaleX
-        box_pred_origsize = [sx, sy, ex, ey]
-        heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
-        if self.demo:
-            return image, image_orig, heat_resized, heat_orig, int(truth), box
-        else:
-            return image, heat_resized, int(truth), box
+        try:
+            truth = self.truths[index]
+            image_orig = np.float32(dicom2array(self.trainPaths[index]))
+            image = cv2.resize(image_orig, (448, 448))
+            box = self.boundingBoxes[index]
+            heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
+            sx, sy, ex, ey = box
+            x, y = image.shape
+            x1, y1 = image_orig.shape
+            scaleX = x / x1
+            scaleY = y / y1
+            sx = sx * scaleY
+            sy = sy * scaleX
+            ex = ex * scaleY
+            ey = ey * scaleX
+            box_pred_origsize = [sx, sy, ex, ey]
+            heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
+            if self.demo:
+                return image, image_orig, heat_resized, heat_orig, int(truth), np.float32(box)
+            else:
+                return image, heat_resized, int(truth), np.float32(box)
 
-        #except:
-        #    return None
+        except:
+            return None
 
     def __len__(self):
         return len(self.trainPaths)
@@ -60,7 +60,7 @@ class DataSetTest():
     def __getitem__(self, index):
         image_orig = np.float32(dicom2array(self.trainPaths[index]))
 
-        image = cv2.resize(image_orig, (128, 128))
+        image = cv2.resize(image_orig, (448, 448))
         return image, image_orig
 
     def __len__(self):
@@ -146,15 +146,15 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
 
     # For training
     dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], demo=demo)
-    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True, collate_fn=collate_fn, drop_last=True)
+    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True, drop_last=True)
 
     # For testing
     dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo = demo)
-    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True, collate_fn=collate_fn,drop_last=True)
+    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=False,drop_last=True)
 
     # For actual evaluation set
     dataset_Test_Eval = DataSetTest(testPaths)
-    dataloader_Test_Eval = DataLoader(dataset=dataset_Test_Eval, batch_size=BATCH, shuffle=True, drop_last=True)
+    dataloader_Test_Eval = DataLoader(dataset=dataset_Test_Eval, batch_size=BATCH, shuffle=False, drop_last=True)
 
     return dataloader_Train, dataloader_Test, dataloader_Test_Eval
 

@@ -1,20 +1,13 @@
 import argparse
-import sys
-
-import numpy as np
-import torch
-from torch import optim, nn
-from tqdm import trange
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import TensorBoardLogger
 from dataLoader import createDataset_300W_LP
 from helperFunctions import *
 from model import AmerModel
-from torch.utils.tensorboard import SummaryWriter
-
-
+from lightningTrainer import trainerLightning
 import yaml
-################################################
 
+################################################
 
 def main():
     pretrained = config['model']['pretrained']
@@ -23,6 +16,7 @@ def main():
     train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
                                                                                BATCH=config['train']['batch_size'])
     print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:", len(eval_dataloader))
+
 ################################################
 
     if pretrained:
@@ -39,18 +33,19 @@ def main():
     model.to(dev)
 
 ################################################
+
     epochs = config['train']['epochs']
 
     print("")
+    logger = TensorBoardLogger(save_dir='runs', name='', default_hp_metric=False)
     modelTrainer = trainerLightning(model, config, dev = dev)
-    trainer = pl.Trainer(max_epochs=epochs, check_val_every_n_epoch=1 , profiler="advanced")
+    trainer = pl.Trainer(max_epochs=epochs, check_val_every_n_epoch=1, log_every_n_steps=len(train_dataloader), logger=logger, profiler="simple")
     trainer.fit(modelTrainer, train_dataloader, test_dataloader)
     print("")
-
     print("-> Save trained model...")
     torch.save(model, model_path)
-################################################
 
+################################################
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
