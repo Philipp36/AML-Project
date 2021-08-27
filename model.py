@@ -100,8 +100,6 @@ class AmerModel(nn.Module):
         self.loc_head = AmerLocHead()
 
     def forward(self, x):
-        x = x.unsqueeze(1)
-        x = x.expand(-1, 3, -1, -1)
         (act56, act28, act14), x = self.backbone(x)
         return self.loc_head(act14, act28, act56), self.det_head(x)
 

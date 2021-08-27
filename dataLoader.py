@@ -111,7 +111,7 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
         for subfolder in os.scandir(folder):
             for file in os.scandir(subfolder):
                 testPaths.append(file.path)
-                testImages.append(str(os.path.basename(file)).replace(".dcm", "_image"))
+                testImages.append(str(os.path.basename(file)).replace(".png", "_image"))
 
     trainPaths = []
     trainImages = []
