@@ -23,4 +23,8 @@ train:
   validation_split: 0.8 # currently not used
 
 test:
-  batch_size: 2 # currently not used (same as train/batch_size)
+  batch_size: 2 # currently not used (same as train/batch_size) # TODO: implement
+
+data_loading:
+  num_workers: 8
+  pin_memory: True

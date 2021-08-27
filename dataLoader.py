@@ -74,7 +74,7 @@ class DataSetTest():
 
 
 def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_path, metadata_study_path, data_size=1.0,
-                          BATCH=64, split=0.9, demo=False):
+                          BATCH=64, split=0.9, demo=False, conf_data_loading={}):
     print("-> Load Data...")
 
     reader = csv.reader(open(metadata_image_path, 'r'))
@@ -151,11 +151,13 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
 
     # For training
     dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], demo=demo)
-    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True, collate_fn=collate_fn, drop_last=True)
+    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True,
+                                  drop_last=True, **conf_data_loading)
 
     # For testing
-    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo = demo)
-    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True, collate_fn=collate_fn,drop_last=True)
+    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo=demo)
+    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True,
+                                 drop_last=True, **conf_data_loading)
 
     # For actual evaluation set
     dataset_Test_Eval = DataSetTest(testPaths)

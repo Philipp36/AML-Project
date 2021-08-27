@@ -89,6 +89,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
     counter_test += 1
     lossBoxes = nn.MSELoss()
     lossLabels = nn.CrossEntropyLoss()
+    model.train()
     for epoch in range(0, epochs):
         print(" Epoch:  ", epoch)
         iterator = iter(train_dataloader)
@@ -96,8 +97,8 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
         losses2 = []
         for index in trange(0, len(train_dataloader)):
             image, heat_resized, truth, box = iterator.next()
-            image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
-            optimizer.zero_grad()
+            image, heat_resized, truth, box = image.to(dev, non_blocking=True), heat_resized.to(dev, non_blocking=True), truth.to(dev, non_blocking=True), box.to(dev, non_blocking=True)
+            optimizer.zero_grad(set_to_none=True)
             heat_pred, label_pred = model(image)
             loss1 = lossBoxes(heat_pred.double(), heat_resized.double())
             loss2 = lossLabels(label_pred, truth)
@@ -108,6 +109,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             optimizer.step()
             losses1.append(float(loss1))
             losses2.append(float(loss2))
+            del LOSS
 
         loss1 = np.mean(np.array(losses1))
         loss2 = np.mean(np.array(losses2))
@@ -120,25 +122,29 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
 ############################################################################
 
 def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu')):
-    print("Test ", counter_test)
-    lossBoxes = nn.MSELoss()
-    lossLabels = nn.CrossEntropyLoss()
-    iterator = iter(test_dataloader)
-    losses1 = []
-    losses2 = []
-    for index in range(0, len(test_dataloader)):
-        image, heat_resized, truth, box = iterator.next()
-        image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
-        heat_pred, label_pred = model(image)
-        loss1 = lossBoxes(heat_pred, heat_resized)
-        loss2 = lossLabels(label_pred, truth)
-        losses1.append(float(loss1))
-        losses2.append(float(loss2))
+    with torch.no_grad():
+        model.eval()
 
-    loss1 = np.mean(np.array(losses1))
-    loss2 = np.mean(np.array(losses2))
-    writer.add_scalar('BoxLoss/test/', loss1, counter_test)
-    writer.add_scalar('LabelLoss/test/', loss2, counter_test)
+        print("Test ", counter_test)
+        lossBoxes = nn.MSELoss()
+        lossLabels = nn.CrossEntropyLoss()
+        iterator = iter(test_dataloader)
+        losses1 = []
+        losses2 = []
+        for index in range(0, len(test_dataloader)):
+            image, heat_resized, truth, box = iterator.next()
+            image, heat_resized, truth, box = image.to(dev, non_blocking=True), heat_resized.to(dev, non_blocking=True), truth.to(dev, non_blocking=True), box.to(dev, non_blocking=True)
+            heat_pred, label_pred = model(image)
+            loss1 = lossBoxes(heat_pred, heat_resized)
+            loss2 = lossLabels(label_pred, truth)
+            losses1.append(float(loss1))
+            losses2.append(float(loss2))
+
+        loss1 = np.mean(np.array(losses1))
+        loss2 = np.mean(np.array(losses2))
+        writer.add_scalar('BoxLoss/test/', loss1, counter_test)
+        writer.add_scalar('LabelLoss/test/', loss2, counter_test)
+
 
 ############################################################################
 

@@ -17,8 +17,11 @@ def main():
     pretrained = config['model']['pretrained']
     model_path = config['model']['model_path']
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(torch.cuda.is_available())
+    torch.cuda.empty_cache()
     train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
-                                                                               BATCH=config['train']['batch_size'])
+                                                                               BATCH=config['train']['batch_size'],
+                                                                               conf_data_loading=config['data_loading'])
     print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:", len(eval_dataloader))
 ################################################
 
