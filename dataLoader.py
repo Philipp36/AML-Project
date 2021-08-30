@@ -1,3 +1,4 @@
+
 import ast
 import random
 import os
@@ -9,6 +10,7 @@ import pydicom
 import torch
 from pydicom.pixel_data_handlers import apply_voi_lut
 from torch.utils.data import DataLoader
+import glob
 ################################################
 from helperFunctions import getHeatMap, rescaleBox
 
@@ -24,13 +26,16 @@ class DataSetTrain():
 
 
         truth = self.truths[index]
-        image_orig = np.float32(dicom2array(self.trainPaths[index]))
+        # image_orig = np.float32(dicom2array(self.trainPaths[index]))
+        image_orig = cv2.imread(self.trainPaths[index])
         image = cv2.resize(image_orig, (448, 448))
+        image = image.astype(np.float32, copy=False)
+        # image = torch.from_numpy(image)
         box = self.boundingBoxes[index]
         heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
         sx, sy, ex, ey = box
-        x, y = image.shape
-        x1, y1 = image_orig.shape
+        x, y, _ = image.shape
+        x1, y1, _ = image_orig.shape
         scaleX = x / x1
         scaleY = y / y1
         sx = sx * scaleY
@@ -40,10 +45,9 @@ class DataSetTrain():
         box_pred_origsize = [sx, sy, ex, ey]
         heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
         if self.demo:
-            return image, image_orig, heat_resized, heat_orig, int(truth), np.float32(box)
+            return image, image_orig, heat_resized, heat_orig, int(truth), box.astype(np.float32, copy=False)
         else:
-            return image, heat_resized, int(truth), np.float32(box)
-
+            return np.moveaxis(image, -1, 0), heat_resized, int(truth), box.astype(np.float32, copy=False)
 
 
     def __len__(self):
@@ -69,7 +73,7 @@ class DataSetTest():
 
 
 def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_path, metadata_study_path, data_size=1.0,
-                          BATCH=64, split=0.9, demo=False):
+                          BATCH=64, split=0.9, demo=False, conf_data_loading={}):
     print("-> Load Data...")
 
     reader = csv.reader(open(metadata_image_path, 'r'))
@@ -106,27 +110,28 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
         for subfolder in os.scandir(folder):
             for file in os.scandir(subfolder):
                 testPaths.append(file.path)
-                testImages.append(str(os.path.basename(file)).replace(".dcm", "_image"))
+                testImages.append(str(os.path.basename(file)).replace(".png", "_image"))
 
     trainPaths = []
     trainImages = []
     boundingBoxes = []
     truths = []
     counter = 0
-    for folder in os.scandir(dataset_train_path):
-        for subfolder in os.scandir(folder):
-            for file in os.scandir(subfolder):
-                trainPaths.append(file.path)
-                image = str(os.path.basename(file)).replace(".dcm", "_image")
-                trainImages.append(image)
-                INDEX = id.index(image)
-                box = boxes[INDEX]
-                box = getCoordinatesFromBox(box)
-                stud = studyID[INDEX]
-                INDEX2 = id_label.index(stud)
-                truth = trueLabels[INDEX2]
-                boundingBoxes.append(box)
-                truths.append(truth)
+#    for folder in os.scandir(dataset_train_path):
+#        for subfolder in os.scandir(folder):
+#            for file in os.scandir(subfolder):
+    for path in glob.glob(dataset_train_path + "/**/*.png", recursive=True):
+        trainPaths.append(path)
+        image = str(os.path.basename(path)).replace(".png", "_image")
+        trainImages.append(image)
+        INDEX = id.index(image)
+        box = boxes[INDEX]
+        box = getCoordinatesFromBox(box)
+        stud = studyID[INDEX]
+        INDEX2 = id_label.index(stud)
+        truth = trueLabels[INDEX2]
+        boundingBoxes.append(box)
+        truths.append(truth)
 
     # Shuffle the data
     c = list(zip(trainPaths, boundingBoxes, truths))
@@ -145,11 +150,14 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
 
     # For training
     dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], demo=demo)
-    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True, drop_last=True)
+
+    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True,
+                                  drop_last=True, **conf_data_loading)
 
     # For testing
-    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo = demo)
-    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=False,drop_last=True)
+    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo=demo)
+    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True,
+                                 drop_last=True, **conf_data_loading)
 
     # For actual evaluation set
     dataset_Test_Eval = DataSetTest(testPaths)
