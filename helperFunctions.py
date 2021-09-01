@@ -217,10 +217,6 @@ def getBoxFromHeatMap(heatmap):
             ex = cnts[-1][0]
             ey = cnts[2][1]
             boxes.append([sx, sy, ex, ey])
-            plt.plot([sx, sx], [sy, ey], lw=4, c="blue", label="Predicted")
-            plt.plot([sx, ex], [sy, sy], lw=4, c="blue")
-            plt.plot([ex, ex], [ey, sy], lw=4, c="blue")
-            plt.plot([ex, sx], [ey, ey], lw=4, c="blue")
         else:
             boxes.append([0,0, 1, 1])
     return torch.tensor(boxes)
