@@ -3,13 +3,13 @@ import sys
 import cv2
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, cm
 from pytorch_lightning import Trainer, seed_everything
 import pytorch_lightning as pl
 ############################################################################
 from torch import nn, optim
 from tqdm import trange
-
+import cv2
 
 def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
 
@@ -152,7 +152,6 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
 ############################################################################
 
 def getHeatMap(img, box):
-
     kernel = np.array([[0, 0, 1, 0, 0],[0, 1, 1, 1, 0],[1, 1, 1, 1, 1],[0, 1, 1, 1, 0],[0, 0, 1, 0, 0]]).astype(np.uint8)
     heat = torch.zeros(img.shape[:2])
     sy, sx, ey, ex = box
@@ -161,8 +160,67 @@ def getHeatMap(img, box):
     heat = cv2.dilate(np.float32(heat), kernel= kernel, iterations=1)
     heat = cv2.GaussianBlur(np.array(heat) ,(5, 5), sigmaX=0)
     return heat
+############################################################################
+
+# Calculates the degree of intersection for two bounding boxes
+def intersection_over_union(gt_box, pred_box):
+    combined = torch.stack((gt_box, pred_box), dim=1)
+    max_0 = torch.max(combined[:, :, 0].T, dim = 0).values
+    max_1 = torch.max(combined[:, :, 1].T, dim=0).values
+    stacked = torch.stack((gt_box[:, 0] + gt_box[:, 2], pred_box[:, 0] + pred_box[:, 2]), dim=0)
+    min_0 = torch.min(stacked, dim = 0).values
+    stacked = torch.stack((gt_box[:, 1] + gt_box[:, 3], pred_box[:, 1] + pred_box[:, 3]), dim=0)
+    min_1 = torch.min(stacked, dim = 0).values
+    w = min_0 - max_0
+    h = min_1 - max_1
+    intersection = w*h
+    union = gt_box[:,2] * gt_box[:,3] + pred_box[:,2] * pred_box[:,3] - intersection
+    iou = intersection / union
+    binaryIOU = iou.ge(0.5).int()
+    return iou, intersection, union, binaryIOU
 
 ############################################################################
 
-def getBoxFromHeatMap(heat):
-    return None
+# Calculates the mean average precision
+def meanAP(gt_box, pred_heatMap, labelsPred, labelsTrue):
+    pred_box = getBoxFromHeatMap(pred_heatMap)
+    softmax = nn.Softmax()
+    labelsPred = softmax(labelsPred)
+    confidenceCorrectLabel = torch.tensor([labelsPred[i][labelsTrue[i]]  for i in range(0, len(labelsTrue))])
+    iou, intersection, union, binaryIOU = intersection_over_union(gt_box, pred_box)
+    limits = np.arange(start=0.0, stop=1.0, step=0.05)
+    precicions=[]
+    for limit in limits:
+        corrects = 0
+        for j in range(0, len(labelsTrue)):
+            if confidenceCorrectLabel[j] >=limit and (iou[j]<=0.5 or labelsTrue[j]==0):
+                corrects+=1
+        precicion = corrects/len(labelsTrue)
+        precicions.append(precicion)
+    mAP = np.mean(np.array(precicions))
+    return mAP
+
+############################################################################
+
+def getBoxFromHeatMap(heatmap):
+    boxes = []
+    for heat in heatmap:
+        gray = heat[0].detach().numpy().astype(np.uint8)
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+        cnts = np.array(cnts)
+        if len(cnts)>0:
+            cnts = cnts.reshape((cnts.shape[1], 2))
+            sx = cnts[0][0]
+            sy = cnts[0][1]
+            ex = cnts[-1][0]
+            ey = cnts[2][1]
+            boxes.append([sx, sy, ex, ey])
+            plt.plot([sx, sx], [sy, ey], lw=4, c="blue", label="Predicted")
+            plt.plot([sx, ex], [sy, sy], lw=4, c="blue")
+            plt.plot([ex, ex], [ey, sy], lw=4, c="blue")
+            plt.plot([ex, sx], [ey, ey], lw=4, c="blue")
+        else:
+            boxes.append([0,0, 1, 1])
+    return torch.tensor(boxes)
