@@ -20,8 +20,8 @@ class trainerLightning(pl.LightningModule):
 
         loss1 = self.lossBoxes(heat_pred.double(), heat_resized.double())
         loss2 = self.lossLabels(label_pred, truth)
-        self.log("HeatMapLoss/Train", loss1)
-        self.log("LabelLoss/Train", loss2)
+        self.log("HeatMapLoss/Train", loss1, on_step=True, on_epoch=True)    # TODO: switch to mean over epoch trough on_epoch=True?
+        self.log("LabelLoss/Train", loss2, on_step=True, on_epoch=True)      # TODO: switch to mean over epoch
         LOSS = loss1 + loss2
         return LOSS
 
@@ -31,8 +31,8 @@ class trainerLightning(pl.LightningModule):
         heat_pred, label_pred = self.model(image)
         loss1 = self.lossBoxes(heat_pred.double(), heat_resized.double())
         loss2 = self.lossLabels(label_pred, truth)
-        self.log("HeatMapLoss/Test", loss1)
-        self.log("LabelLoss/Test", loss2)
+        self.log("HeatMapLoss/Test", loss1, on_step=True, on_epoch=True)     # TODO: log val accuracy (mean average precision) instead of loss
+        self.log("LabelLoss/Test", loss2, on_step=True, on_epoch=True)
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.model.parameters(), **self.config['optimizer'])
