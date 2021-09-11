@@ -123,7 +123,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             optimizer.step()
             losses1.append(float(loss1))
             losses2.append(float(loss2))
-            if index % 50 == 0 and index > 2:
+            if index % 500 == 0 and index > 2:
                 loss1 = np.mean(np.array(losses1))
                 loss2 = np.mean(np.array(losses2))
                 writer.add_scalar('BoxLoss/train/', loss1, counter_train)
@@ -158,9 +158,6 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
 
         loss1 = float(np.mean(np.array(losses1)))
         loss2 = float(np.mean(np.array(losses2)))
-
-        print("HeatMap: ", loss1)
-        print("Labels: ", loss2)
 
         writer.add_scalar('BoxLoss/test/', loss1, counter_test)
         writer.add_scalar('LabelLoss/test/', loss2, counter_test)
