@@ -1,37 +1,49 @@
-
 import ast
 import random
 import os
 import csv
+import sys
+from skimage import io, transform
 import cv2
 import numpy
 import numpy as np
 import pydicom
 import torch
+import torchvision
+from matplotlib import pyplot as plt
 from pydicom.pixel_data_handlers import apply_voi_lut
 from torch.utils.data import DataLoader
 import glob
+from PIL import Image
 ################################################
-from helperFunctions import getHeatMap, rescaleBox
+from helperFunctions import *
 
 
 class DataSetTrain():
-    def __init__(self, trainPaths, boundingBoxes, truths, demo):
+    def __init__(self, trainPaths, boundingBoxes, truths, types, demo):
         self.trainPaths = trainPaths
         self.boundingBoxes = boundingBoxes
         self.truths = truths
         self.demo = demo
+        self.types = types
 
     def __getitem__(self, index):
-
-
         truth = self.truths[index]
-        # image_orig = np.float32(dicom2array(self.trainPaths[index]))
+
         image_orig = cv2.imread(self.trainPaths[index])
-        image = cv2.resize(image_orig, (448, 448))
-        image = image.astype(np.float32, copy=False)
-        # image = torch.from_numpy(image)
+        image_orig = Image.fromarray(image_orig.astype('uint8'), 'RGB')
         box = self.boundingBoxes[index]
+
+        if self.types[index] == 1:
+            image_orig, box = mirrorImage(image_orig, box)
+        elif self.types[index] == 2:
+            image_orig, box = rotateImage(image_orig, box, option="left")
+        elif self.types[index] == 3:
+            image_orig, box = rotateImage(image_orig, box, option="right")
+        image_orig = np.array(image_orig)
+
+
+        image = cv2.resize(image_orig, (448, 448))
         heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
         sx, sy, ex, ey = box
         x, y, _ = image.shape
@@ -42,12 +54,14 @@ class DataSetTrain():
         sy = sy * scaleX
         ex = ex * scaleY
         ey = ey * scaleX
-        box_pred_origsize = [sx, sy, ex, ey]
+        box_pred_origsize = np.array([sx, sy, ex, ey])
         heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
+
         if self.demo:
-            return image, image_orig, heat_resized, heat_orig, int(truth), box.astype(np.float32, copy=False)
+            return np.moveaxis(image, -1, 0), heat_resized, int(truth), box_pred_origsize.astype(np.float32, copy=False), np.moveaxis(image_orig, -1, 0), heat_orig
+
         else:
-            return np.moveaxis(image, -1, 0), heat_resized, int(truth), box.astype(np.float32, copy=False)
+            return np.moveaxis(image, -1, 0), heat_resized, int(truth), box_pred_origsize.astype(np.float32, copy=False)
 
 
     def __len__(self):
@@ -117,45 +131,51 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
     boundingBoxes = []
     truths = []
     counter = 0
-#    for folder in os.scandir(dataset_train_path):
-#        for subfolder in os.scandir(folder):
-#            for file in os.scandir(subfolder):
-    for path in glob.glob(dataset_train_path + "/**/*.png", recursive=True):
-        trainPaths.append(path)
-        image = str(os.path.basename(path)).replace(".png", "_image")
-        trainImages.append(image)
-        INDEX = id.index(image)
-        box = boxes[INDEX]
-        box = getCoordinatesFromBox(box)
-        stud = studyID[INDEX]
-        INDEX2 = id_label.index(stud)
-        truth = trueLabels[INDEX2]
-        boundingBoxes.append(box)
-        truths.append(truth)
+    # for path in glob.glob(dataset_train_path + "/**/*.png", recursive=True):
+    for folder in os.scandir(dataset_train_path):
+        for subfolder in os.scandir(folder):
+            for file in os.scandir(subfolder):
+                path = file.path
+                trainPaths.append(path)
+                image = str(os.path.basename(path)).replace(".png", "_image")
+                trainImages.append(image)
+                INDEX = id.index(image)
+                box = boxes[INDEX]
+                box = getCoordinatesFromBox(box)
+                stud = studyID[INDEX]
+                INDEX2 = id_label.index(stud)
+                truth = trueLabels[INDEX2]
+                boundingBoxes.append(box)
+                truths.append(truth)
+
+    # For augmentation
+    trainPaths, boundingBoxes, truths, types = addAugmentation(trainPaths, boundingBoxes, truths)
 
     # Shuffle the data
-    c = list(zip(trainPaths, boundingBoxes, truths))
+    c = list(zip(trainPaths, boundingBoxes, truths, types))
     random.shuffle(c)
-    trainPaths, boundingBoxes, truths = zip(*c)
+    trainPaths, boundingBoxes, truths, types = zip(*c)
 
     # If we do not want to use 100% of the data
     lim = int(len(trainPaths) * data_size)
     trainPaths = trainPaths[:lim]
     boundingBoxes = boundingBoxes[:lim]
     truths = truths[:lim]
+    types = types[:lim]
+
     testPaths = testPaths[:int(len(testPaths) * data_size)]
 
     # Split training set into train and test
     separation = int(len(trainPaths) * split)
 
     # For training
-    dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], demo=demo)
+    dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], types[:separation], demo=demo)
 
     dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True,
                                   drop_last=True, **conf_data_loading)
 
     # For testing
-    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], demo=demo)
+    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], types[:separation], demo=demo)
     dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True,
                                  drop_last=True, **conf_data_loading)
 

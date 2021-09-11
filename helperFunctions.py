@@ -1,8 +1,12 @@
+import math
+import random
 import sys
+from math import sin, cos
 
 import cv2
 import numpy as np
 import torch
+from PIL import Image
 from matplotlib import pyplot as plt, cm
 from pytorch_lightning import Trainer, seed_everything
 import pytorch_lightning as pl
@@ -16,16 +20,16 @@ def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
     # Transform the predicted Box
     if transformPredicted:
         sx, sy, ex, ey = box_pred
-        x, y = img.shape
-        x1, y1 = imageOrig.shape
+        x, y, z = img.shape
+        x1, y1, z1 = imageOrig.shape
         scaleX = x1/x
         scaleY = y1/y
 
     # Transform the true Box
     else:
         sx, sy, ex, ey = box_true
-        x, y = img.shape
-        x1, y1 = imageOrig.shape
+        x, y, z = img.shape
+        x1, y1, z1 = imageOrig.shape
         scaleX = x/x1
         scaleY = y/y1
 
@@ -40,7 +44,10 @@ def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
 
 def drawSample(IMG, IMG_ORIG, box_true, box_pred, originalSize = False):
 
+
     if originalSize:
+
+
         # Draw real size
         BOX_PREDICTED = rescaleBox(box_pred, box_true, IMG, IMG_ORIG, transformPredicted=True)
 
@@ -62,10 +69,10 @@ def drawSample(IMG, IMG_ORIG, box_true, box_pred, originalSize = False):
         plt.show()
 
     else:
-        # Draw resized
-        BOX_TRUTH = rescaleBox(box_pred, box_true, IMG, IMG_ORIG, transformPredicted=False)
+        ## Draw resized
+        #BOX_TRUTH = rescaleBox(box_pred, box_true, IMG, IMG_ORIG, transformPredicted=False)
 
-        sx, sy, ex, ey = BOX_TRUTH
+        sx, sy, ex, ey = box_true
 
         plt.plot([sx, sx], [sy, ey], lw=2, c = "red", label = "True")
         plt.plot([sx, ex], [sy, sy], lw=2, c = "red")
@@ -92,6 +99,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
     lossBoxes = nn.MSELoss()
     lossLabels = nn.CrossEntropyLoss()
     model.train()
+    counter_train = 1
 
     for epoch in range(0, epochs):
         print(" Epoch:  ", epoch)
@@ -100,54 +108,64 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
         losses2 = []
         for index in trange(0, len(train_dataloader)):
             image, heat_resized, truth, box = iterator.next()
-            image, heat_resized, truth, box = image.to(dev, non_blocking=True), heat_resized.to(dev, non_blocking=True), truth.to(dev, non_blocking=True), box.to(dev, non_blocking=True)
-            optimizer.zero_grad(set_to_none=True)
-
+            image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
+            optimizer.zero_grad()
             heat_pred, label_pred = model(image)
-            loss1 = lossBoxes(heat_pred.double(), heat_resized.double())
+
+            for k in range(0, len(heat_pred)):
+                if truth[k] == 0:
+                    heat_pred[k] = box[k]
+
+            loss1 = lossBoxes(heat_pred, box)
             loss2 = lossLabels(label_pred, truth)
-            #if epoch == 0 and index == 0:
-            #    W = float((loss1 / loss2))
-            LOSS = loss1 + loss2 #(W * loss2)
+            LOSS = loss1 + loss2
             LOSS.backward()
             optimizer.step()
             losses1.append(float(loss1))
             losses2.append(float(loss2))
-            del LOSS
-
-        loss1 = np.mean(np.array(losses1))
-        loss2 = np.mean(np.array(losses2))
-        writer.add_scalar('BoxLoss/train/', loss1, epoch)
-        writer.add_scalar('LabelLoss/train/', loss2, epoch)
-        testLoop(model, test_dataloader, counter_test, writer, dev=dev)
-        counter_test += 1
-        torch.save(model, pathModel)
+            if index % 50 == 0 and index > 2:
+                loss1 = np.mean(np.array(losses1))
+                loss2 = np.mean(np.array(losses2))
+                writer.add_scalar('BoxLoss/train/', loss1, counter_train)
+                writer.add_scalar('LabelLoss/train/', loss2, counter_train)
+                counter_train+=1
+                testLoop(model, test_dataloader, counter_test, writer, dev=dev)
+                counter_test += 1
+                torch.save(model, pathModel)
+                losses1 = []
+                losses2 = []
 
 ############################################################################
 
 def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu')):
     with torch.no_grad():
         model.eval()
-
         print("Test ", counter_test)
         lossBoxes = nn.MSELoss()
         lossLabels = nn.CrossEntropyLoss()
         iterator = iter(test_dataloader)
         losses1 = []
         losses2 = []
-        for index in range(0, len(test_dataloader)):
+        for index in trange(0, len(test_dataloader)):
             image, heat_resized, truth, box = iterator.next()
-            image, heat_resized, truth, box = image.to(dev, non_blocking=True), heat_resized.to(dev, non_blocking=True), truth.to(dev, non_blocking=True), box.to(dev, non_blocking=True)
+            image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
             heat_pred, label_pred = model(image)
-            loss1 = lossBoxes(heat_pred, heat_resized)
+
+            loss1 = lossBoxes(heat_pred, box)
             loss2 = lossLabels(label_pred, truth)
             losses1.append(float(loss1))
             losses2.append(float(loss2))
 
-        loss1 = np.mean(np.array(losses1))
-        loss2 = np.mean(np.array(losses2))
+        loss1 = float(np.mean(np.array(losses1)))
+        loss2 = float(np.mean(np.array(losses2)))
+
+        print("HeatMap: ", loss1)
+        print("Labels: ", loss2)
+
         writer.add_scalar('BoxLoss/test/', loss1, counter_test)
         writer.add_scalar('LabelLoss/test/', loss2, counter_test)
+
+        model.train()
 
 ############################################################################
 
@@ -210,13 +228,101 @@ def getBoxFromHeatMap(heatmap):
         cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
         cnts = np.array(cnts)
-        if len(cnts)>0:
-            cnts = cnts.reshape((cnts.shape[1], 2))
-            sx = cnts[0][0]
-            sy = cnts[0][1]
-            ex = cnts[-1][0]
-            ey = cnts[2][1]
-            boxes.append([sx, sy, ex, ey])
-        else:
-            boxes.append([0,0, 1, 1])
+        try:
+            if len(cnts)>0:
+                cnts = cnts.reshape((cnts.shape[1], 2))
+                sx = cnts[0][0]
+                sy = cnts[0][1]
+                ex = cnts[-1][0]
+                ey = cnts[2][1]
+                boxes.append([sx, sy, ex, ey])
+            else:
+                boxes.append()
+        except:
+            return torch.tensor([[0,0, 1, 1]])
     return torch.tensor(boxes)
+
+############################################################################
+
+def addAugmentation(trainPaths, boundingBoxes, truths):
+
+    # 0: Original image
+    # 1: Mirrored image
+    # 2: Cropped image
+    # 3: Left rotation
+    # 4: Right rotation
+
+    trainPathsNew = []
+    boundingBoxesNew = []
+    truthsNew = []
+    types = []
+    for i in range(0, len(trainPaths)):
+
+        path = trainPaths[i]
+        box = boundingBoxes[i]
+        label = truths[i]
+
+        #0. The original image
+        trainPathsNew.append(path)
+        boundingBoxesNew.append(box)
+        truthsNew.append(label)
+        types.append(0)
+
+        #1. The Mirrored image
+        trainPathsNew.append(path)
+        boundingBoxesNew.append(box)
+        truthsNew.append(label)
+        types.append(1)
+
+        #2. Left rotation
+        trainPathsNew.append(path)
+        boundingBoxesNew.append(box)
+        truthsNew.append(label)
+        types.append(2)
+
+        #3. Right rotation
+        trainPathsNew.append(path)
+        boundingBoxesNew.append(box)
+        truthsNew.append(label)
+        types.append(3)
+
+    return trainPathsNew, boundingBoxesNew, truthsNew, types
+
+############################################################################
+
+def mirrorImage(img, box):
+    sx, sy, ex, ey = box
+    X, Y = np.array(img).shape[:2]
+    exNew = Y - sx
+    sxNew = exNew - (ex - sx)
+    boxNew = [sxNew, sy, exNew, ey]
+    imgNew = img.transpose(method=Image.FLIP_LEFT_RIGHT)
+    return imgNew, boxNew
+
+############################################################################
+
+def cropImage(img, box):
+    sx, sy, ex, ey = box
+    X, Y = np.array(img).shape[:2]
+    resizeFactor = 0.95
+    newX = X * resizeFactor
+    newY = Y * resizeFactor
+    sxNew, syNew, exNew, eyNew = sx * resizeFactor, sy * resizeFactor, ex * resizeFactor, ey * resizeFactor
+    boxNew = [sxNew, syNew, exNew, eyNew]
+    img_cropped = img.crop((X - newX, Y - newY, newX, newY))
+    return img_cropped, boxNew
+
+############################################################################
+
+def rotateImage(img, box, option="left"):
+    angle = random.randint(1, 45)
+    if option == "right":
+        angle = -angle
+    img = np.array(img)
+    (h, w) = img.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D((cX, cY), angle, 1.0)
+    shiftedIMG = cv2.warpAffine(img, M, (w, h))
+    return shiftedIMG, box
+
+

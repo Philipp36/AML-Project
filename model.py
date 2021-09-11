@@ -1,3 +1,5 @@
+import sys
+
 import torch
 from torch import nn
 from torchvision import models
@@ -18,7 +20,8 @@ class model1(nn.Module):
         self.fc_out_labels = nn.Linear(256, 4)
 
     def forward(self, x):
-        x = torch.unsqueeze(x, 1)
+
+
         x = self.conv1(x)
         x = self.maxPool(x)
         x = self.relu(x)
@@ -74,13 +77,27 @@ class AmerLocHead(nn.Module):
                                   nn.Conv2d(kernel_size=(3, 3), stride=2, in_channels=128, out_channels=64),
                                   nn.ReLU(inplace=True))
 
+        self.fc1 = nn.Linear(3025, 1000)
+        self.fc2 = nn.Linear(1000, 400)
+        self.fc3 = nn.Linear(400, 100)
+        self.fc4 = nn.Linear(100, 50)
+        self.fc5 = nn.Linear(50, 4)
+
     def forward(self, x, y, z):
         x = self.loc1(x)
         x = self.loc2(x + y)
         x = self.loc3(x + z)
         x, _ = torch.max(x, dim=1, keepdim=True)
-        up = nn.Upsample(size=(448, 448), mode='nearest')
-        return up(x).squeeze()
+
+        x = torch.flatten(x, start_dim=2)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        x = self.fc4(x)
+        x = self.fc5(x)
+        x = x.reshape(x.shape[0], 4)
+
+        return x
 
 
 class AmerModel(nn.Module):
@@ -99,5 +116,8 @@ class AmerModel(nn.Module):
         self.loc_head = AmerLocHead()
 
     def forward(self, x):
+        x = x.float()
         (act56, act28, act14), x = self.backbone(x)
+
+
         return self.loc_head(act14, act28, act56), self.det_head(x)

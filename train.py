@@ -1,4 +1,6 @@
 import argparse
+import logging
+
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from dataLoader import createDataset_300W_LP
@@ -6,7 +8,7 @@ from helperFunctions import *
 from model import AmerModel
 from lightningTrainer import trainerLightning
 import yaml
-
+from torch.utils.tensorboard import SummaryWriter
 ################################################
 
 def main():
@@ -36,14 +38,22 @@ def main():
 ################################################
 
     epochs = config['train']['epochs']
+    optimizer = optim.Adam(model.parameters(), **config['optimizer'])
+    counter_test = 0
+    writer = SummaryWriter()
 
     print("")
+    trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, model_path, dev=dev)
+    print("")
+
+    """
     logger = TensorBoardLogger(save_dir='runs', name='', default_hp_metric=False)
     modelTrainer = trainerLightning(model, config, dev=dev)
     trainer = pl.Trainer(max_epochs=epochs, check_val_every_n_epoch=1, log_every_n_steps=len(train_dataloader),
                          logger=logger, profiler="simple", gpus=1 if torch.cuda.is_available() else 0)
     trainer.fit(modelTrainer, train_dataloader, test_dataloader)
-    print("")
+    """
+
     print("-> Save trained model...")
     torch.save(model, model_path)
 
