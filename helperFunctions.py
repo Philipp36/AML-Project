@@ -92,6 +92,9 @@ def drawSample(IMG, IMG_ORIG, box_true, box_pred, originalSize = False):
 
 ############################################################################
 def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, pathModel, dev=torch.device('cpu')):
+    # logging and testing parameters
+    logging_interval = 50
+    test_interval = 500
 
     testLoop(model, test_dataloader, counter_test, writer, dev=dev)
     counter_test += 1
@@ -101,11 +104,16 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
     model.train()
     counter_train = 1
 
+    losses1 = []
+    losses2 = []
+    #with torch.profiler.profile(schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=2),
+    #                            on_trace_ready=torch.profiler.tensorboard_trace_handler('./runs/train/amermodel'),
+    #                            record_shapes=True,
+    #                            with_stack=True,
+    #                            profile_memory=True) as prof:
     for epoch in range(0, epochs):
         print(" Epoch:  ", epoch)
         iterator = iter(train_dataloader)
-        losses1 = []
-        losses2 = []
         for index in trange(0, len(train_dataloader)):
             image, heat_resized, truth, box = iterator.next()
             image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
@@ -121,24 +129,42 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             LOSS = loss1 + loss2
             LOSS.backward()
             optimizer.step()
-            losses1.append(float(loss1))
-            losses2.append(float(loss2))
-            if index % 500 == 0 and index > 2:
-                loss1 = np.mean(np.array(losses1))
-                loss2 = np.mean(np.array(losses2))
-                writer.add_scalar('BoxLoss/train/', loss1, counter_train)
-                writer.add_scalar('LabelLoss/train/', loss2, counter_train)
-                counter_train+=1
+            # prof.step()
+            losses1.append(loss1.item())
+            losses2.append(loss2.item())
+            # LOGGING STEP LOSSES
+            if index % logging_interval == 0 and index > 2:
+                loss1 = np.mean(np.array(losses1[-logging_interval:]))
+                loss2 = np.mean(np.array(losses2[-logging_interval:]))
+                writer.add_scalar('BoxLoss/train_step', loss1, counter_train)
+                writer.add_scalar('LabelLoss/train_step', loss2, counter_train)
+            counter_train += 1
+                # losses1 = []
+                # losses2 = []
+
+            del LOSS, loss1, loss2, image, heat_resized, truth, box
+            # TESTING AND MODEL SAVING
+            if index % test_interval == 0 and index > 2:
                 testLoop(model, test_dataloader, counter_test, writer, dev=dev)
-                counter_test += 1
                 torch.save(model, pathModel)
-                losses1 = []
-                losses2 = []
+                counter_test += 1
+
+        # LOGGING EPOCH LOSSES
+        loss1 = np.mean(np.array(losses1[-len(train_dataloader):]))
+        loss2 = np.mean(np.array(losses2[-len(train_dataloader):]))
+        writer.add_scalar('BoxLoss/train_epoch', loss1, epoch)
+        writer.add_scalar('LabelLoss/train_epoch', loss2, epoch)
+
 
 ############################################################################
 
 def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu')):
-    with torch.no_grad():
+    with torch.no_grad(): # and \
+        # torch.profiler.profile(schedule=torch.profiler.schedule(wait=1, warmup=2, active=3, repeat=2),
+        #                       on_trace_ready=torch.profiler.tensorboard_trace_handler('./runs/test/amermodel'),
+        #                       record_shapes=False,
+        #                       with_stack=False,
+        #                       profile_memory=True) as prof:
         model.eval()
         print("Test ", counter_test)
         lossBoxes = nn.MSELoss()
@@ -146,21 +172,37 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
         iterator = iter(test_dataloader)
         losses1 = []
         losses2 = []
+        mean_aps = []
+        correct = 0
         for index in trange(0, len(test_dataloader)):
             image, heat_resized, truth, box = iterator.next()
             image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
             heat_pred, label_pred = model(image)
 
+            heat_pred = torch.where(torch.unsqueeze(truth, 1).expand(-1, 4) == 0, box, heat_pred)
+            # for k in range(0, len(heat_pred)):
+            #    if truth[k] == 0:
+            #        heat_pred[k] = box[k]
+
             loss1 = lossBoxes(heat_pred, box)
             loss2 = lossLabels(label_pred, truth)
-            losses1.append(float(loss1))
-            losses2.append(float(loss2))
+            losses1.append(loss1.item())
+            losses2.append(loss2.item())
+            correct += torch.sum(torch.argmax(label_pred, dim=1) == truth)
+            mean_aps.append(meanAP(box, heat_pred, label_pred, truth))
+            # prof.step()
+            del loss1, loss2, image, heat_resized, truth, box
 
         loss1 = float(np.mean(np.array(losses1)))
         loss2 = float(np.mean(np.array(losses2)))
-
+        mean_ap = float(np.mean(np.array(mean_aps)))
         writer.add_scalar('BoxLoss/test/', loss1, counter_test)
         writer.add_scalar('LabelLoss/test/', loss2, counter_test)
+        writer.add_scalar('mean_ap/test/', mean_ap, counter_test)
+        iterator = iter(test_dataloader)
+        batch_size = iterator.next()[0].size()[0]
+        writer.add_scalar('val_acc/test', correct / (len(test_dataloader) * batch_size), counter_test)
+
 
         model.train()
 
@@ -197,8 +239,8 @@ def intersection_over_union(gt_box, pred_box):
 ############################################################################
 
 # Calculates the mean average precision
-def meanAP(gt_box, pred_heatMap, labelsPred, labelsTrue):
-    pred_box = getBoxFromHeatMap(pred_heatMap)
+def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
+    # pred_box = getBoxFromHeatMap(pred_heatMap)
     softmax = nn.Softmax()
     labelsPred = softmax(labelsPred)
     confidenceCorrectLabel = torch.tensor([labelsPred[i][labelsTrue[i]]  for i in range(0, len(labelsTrue))])
