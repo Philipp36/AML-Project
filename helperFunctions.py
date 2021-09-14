@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt, cm
 from pytorch_lightning import Trainer, seed_everything
 import pytorch_lightning as pl
 ############################################################################
-from torch import nn, optim
+from torch import nn, optim, profiler
 from tqdm import trange
 import cv2
 

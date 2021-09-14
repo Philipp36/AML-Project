@@ -87,7 +87,7 @@ class DataSetTest():
 
 
 def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_path, metadata_study_path, data_size=1.0,
-                          BATCH=64, split=0.9, demo=False, conf_data_loading={}):
+                          train_batch=16, test_batch=128, split=0.9, demo=False, conf_data_loading={}):
     print("-> Load Data...")
 
     reader = csv.reader(open(metadata_image_path, 'r'))
@@ -120,36 +120,40 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
 
     testPaths=[]
     testImages = []
-    for folder in os.scandir(dataset_test_path):
-        for subfolder in os.scandir(folder):
-            for file in os.scandir(subfolder):
-                testPaths.append(file.path)
-                testImages.append(str(os.path.basename(file)).replace(".png", "_image"))
+    # for folder in os.scandir(dataset_test_path):
+    #    for subfolder in os.scandir(folder):
+    #        for file in os.scandir(subfolder):
+    for path in glob.glob(dataset_test_path + "/**/*.png", recursive=True):
+        testPaths.append(path)
+        testImages.append(str(os.path.basename(path)).replace(".png", "_image"))
 
     trainPaths = []
     trainImages = []
     boundingBoxes = []
     truths = []
     counter = 0
-    # for path in glob.glob(dataset_train_path + "/**/*.png", recursive=True):
-    for folder in os.scandir(dataset_train_path):
-        for subfolder in os.scandir(folder):
-            for file in os.scandir(subfolder):
-                path = file.path
-                trainPaths.append(path)
-                image = str(os.path.basename(path)).replace(".png", "_image")
-                trainImages.append(image)
-                INDEX = id.index(image)
-                box = boxes[INDEX]
-                box = getCoordinatesFromBox(box)
-                stud = studyID[INDEX]
-                INDEX2 = id_label.index(stud)
-                truth = trueLabels[INDEX2]
-                boundingBoxes.append(box)
-                truths.append(truth)
+    for path in glob.glob(dataset_train_path + "/**/*.png", recursive=True):
+    # for folder in os.scandir(dataset_train_path):
+    #    for subfolder in os.scandir(folder):
+    #         for file in os.scandir(subfolder):
+        # path = file.path
+        trainPaths.append(path)
+        image = str(os.path.basename(path)).replace(".png", "_image")
+        trainImages.append(image)
+        INDEX = id.index(image)
+        box = boxes[INDEX]
+        box = getCoordinatesFromBox(box)
+        stud = studyID[INDEX]
+        INDEX2 = id_label.index(stud)
+        truth = trueLabels[INDEX2]
+        boundingBoxes.append(box)
+        truths.append(truth)
 
+    # Split training set into train and test
+    separation = int(len(trainPaths) * split)
     # For augmentation
-    trainPaths, boundingBoxes, truths, types = addAugmentation(trainPaths, boundingBoxes, truths)
+    val_data = (trainPaths[separation:], boundingBoxes[separation:], truths[separation:])
+    trainPaths, boundingBoxes, truths, types = addAugmentation(trainPaths[:separation], boundingBoxes[:separation], truths[:separation])
 
     # Shuffle the data
     c = list(zip(trainPaths, boundingBoxes, truths, types))
@@ -165,23 +169,21 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
 
     testPaths = testPaths[:int(len(testPaths) * data_size)]
 
-    # Split training set into train and test
-    separation = int(len(trainPaths) * split)
 
     # For training
-    dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], types[:separation], demo=demo)
+    dataset_Train = DataSetTrain(trainPaths, boundingBoxes, truths, types, demo=demo)
 
-    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True,
+    dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=train_batch, shuffle=True,
                                   drop_last=True, **conf_data_loading)
 
     # For testing
-    dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], types[:separation], demo=demo)
-    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=BATCH, shuffle=True,
+    dataset_Test = DataSetTrain(*val_data, np.zeros(shape=(len(val_data[0]), 1)), demo=demo)
+    dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=test_batch, shuffle=True,
                                  drop_last=True, **conf_data_loading)
 
     # For actual evaluation set
     dataset_Test_Eval = DataSetTest(testPaths)
-    dataloader_Test_Eval = DataLoader(dataset=dataset_Test_Eval, batch_size=BATCH, shuffle=False, drop_last=True)
+    dataloader_Test_Eval = DataLoader(dataset=dataset_Test_Eval, batch_size=test_batch, shuffle=False, drop_last=True)
 
     return dataloader_Train, dataloader_Test, dataloader_Test_Eval
 

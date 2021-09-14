@@ -18,9 +18,12 @@ def main():
     logging.info(torch.cuda.is_available())
     torch.cuda.empty_cache()
     train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
-                                                                               BATCH=config['train']['batch_size'],
+                                                                               train_batch=config['train']['batch_size'],
+                                                                               test_batch=config['test']['batch_size'],
                                                                                conf_data_loading=config['data_loading'])
-    print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:", len(eval_dataloader))
+    print("#Train Batches:", len(train_dataloader),
+          "#Test Batches:", len(test_dataloader),
+          "#Eval Batches:", len(eval_dataloader))
 
 ################################################
 
@@ -35,6 +38,8 @@ def main():
         print("-> Create New Model...")
         model = AmerModel()
 
+    if torch.cuda.is_available():
+        model.to(dev)
 ################################################
 
     epochs = config['train']['epochs']
