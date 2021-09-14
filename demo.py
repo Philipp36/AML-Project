@@ -48,23 +48,26 @@ def main():
             iterator = iter(test_dataloader)
 
             image, truth_heatMap_resized, truth, box, imageOrig, truth_heatMap_origsize = iterator.next()
-            #image, heat_resized, truth, box = iterator.next()
+            #mage, heat_resized, truth, box = iterator.next()
 
             heat_pred, label_pred = model(image)
+            mAP = meanAP(box, heat_pred, label_pred, truth)
+
+            print("mAP", mAP)
+
+            print("IOU: ", float(intersection_over_union(box, heat_pred)[0]))
 
             for i in range(0, heat_pred.shape[0]):
-                #print(truth[i], torch.argmax(label_pred[i]))
-                #print(box[i])
-                #print(heat_pred[i])
+                print(truth[i], torch.argmax(label_pred[i]))
+                print(box[i])
+                print(heat_pred[i])
                 #print("")
-
                 image = image[i]
                 image = image.swapaxes(0, 1)
                 image = image.swapaxes(1, 2)
                 imageOrig = imageOrig[i]
                 imageOrig = imageOrig.swapaxes(0, 1)
                 imageOrig = imageOrig.swapaxes(1, 2)
-
                 drawSample(image, imageOrig, box[i], heat_pred[i], originalSize=False)
 
 

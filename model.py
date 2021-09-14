@@ -119,5 +119,4 @@ class AmerModel(nn.Module):
         x = x.float()
         (act56, act28, act14), x = self.backbone(x)
 
-
         return self.loc_head(act14, act28, act56), self.det_head(x)

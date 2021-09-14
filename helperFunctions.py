@@ -14,6 +14,7 @@ import pytorch_lightning as pl
 from torch import nn, optim
 from tqdm import trange
 import cv2
+from sklearn.metrics import f1_score
 
 def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
 
@@ -123,7 +124,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
             optimizer.step()
             losses1.append(float(loss1))
             losses2.append(float(loss2))
-            if index % 500 == 0 and index > 2:
+            if index % 200 == 0 :
                 loss1 = np.mean(np.array(losses1))
                 loss2 = np.mean(np.array(losses2))
                 writer.add_scalar('BoxLoss/train/', loss1, counter_train)
@@ -146,10 +147,27 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
         iterator = iter(test_dataloader)
         losses1 = []
         losses2 = []
+        losses3 = []
+        F1S = []
+
+
         for index in trange(0, len(test_dataloader)):
             image, heat_resized, truth, box = iterator.next()
             image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
             heat_pred, label_pred = model(image)
+
+
+            trueLabels = [int(label) for label in truth]
+            predictedLabels = [int(torch.argmax(label)) for label in label_pred]
+            f1  = f1_score(trueLabels, predictedLabels, average='micro')
+            F1S.append(f1)
+
+            for k in range(0, len(heat_pred)):
+                if truth[k] == 0:
+                    heat_pred[k] = box[k]
+
+            mAP = meanAP(box, heat_pred, label_pred, truth)
+            losses3.append(float(mAP))
 
             loss1 = lossBoxes(heat_pred, box)
             loss2 = lossLabels(label_pred, truth)
@@ -158,9 +176,16 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
 
         loss1 = float(np.mean(np.array(losses1)))
         loss2 = float(np.mean(np.array(losses2)))
+        loss3 = float(np.mean(np.array(losses3)))
+
+        print("HeatMap: ", loss1)
+        print("Labels: ", loss2)
+        print("mAP: ", loss3)
+        print("F1", np.mean(np.array(F1S)))
 
         writer.add_scalar('BoxLoss/test/', loss1, counter_test)
         writer.add_scalar('LabelLoss/test/', loss2, counter_test)
+        writer.add_scalar('mAP/test/', loss3, counter_test)
 
         model.train()
 
@@ -197,9 +222,11 @@ def intersection_over_union(gt_box, pred_box):
 ############################################################################
 
 # Calculates the mean average precision
-def meanAP(gt_box, pred_heatMap, labelsPred, labelsTrue):
-    pred_box = getBoxFromHeatMap(pred_heatMap)
-    softmax = nn.Softmax()
+def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
+    #pred_box = getBoxFromHeatMap(pred_heatMap)
+
+
+    softmax = nn.Softmax(dim = 1)
     labelsPred = softmax(labelsPred)
     confidenceCorrectLabel = torch.tensor([labelsPred[i][labelsTrue[i]]  for i in range(0, len(labelsTrue))])
     iou, intersection, union, binaryIOU = intersection_over_union(gt_box, pred_box)
@@ -208,7 +235,7 @@ def meanAP(gt_box, pred_heatMap, labelsPred, labelsTrue):
     for limit in limits:
         corrects = 0
         for j in range(0, len(labelsTrue)):
-            if confidenceCorrectLabel[j] >=limit and (iou[j]<=0.5 or labelsTrue[j]==0):
+            if confidenceCorrectLabel[j] >=limit and (iou[j]>=0.5 or labelsTrue[j]==0):
                 corrects+=1
         precicion = corrects/len(labelsTrue)
         precicions.append(precicion)

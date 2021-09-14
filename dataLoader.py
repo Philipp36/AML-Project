@@ -15,6 +15,7 @@ from pydicom.pixel_data_handlers import apply_voi_lut
 from torch.utils.data import DataLoader
 import glob
 from PIL import Image
+from collections import Counter
 ################################################
 from helperFunctions import *
 
@@ -168,11 +169,59 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
     # Split training set into train and test
     separation = int(len(trainPaths) * split)
 
+    """
+    ########
+    truths_ = []
+    trainPaths_ = []
+    boundingBoxes_ = []
+    types_ = []
+    for i in range(0, len(truths)):
+        if truths[i]==0:
+            truths_.append(truths[i])
+            trainPaths_.append(trainPaths[i])
+            boundingBoxes_.append(boundingBoxes[i])
+            types_.append(types[i])
+            break
+
+    for i in range(0, len(truths)):
+        if truths[i]==1:
+            truths_.append(truths[i])
+            trainPaths_.append(trainPaths[i])
+            boundingBoxes_.append(boundingBoxes[i])
+            types_.append(types[i])
+            break
+
+    for i in range(0, len(truths)):
+        if truths[i]==2:
+            truths_.append(truths[i])
+            trainPaths_.append(trainPaths[i])
+            boundingBoxes_.append(boundingBoxes[i])
+            types_.append(types[i])
+            break
+
+    for i in range(0, len(truths)):
+        if truths[i]==3:
+            truths_.append(truths[i])
+            trainPaths_.append(trainPaths[i])
+            boundingBoxes_.append(boundingBoxes[i])
+            types_.append(types[i])
+            break
+
+    separation = int(len(trainPaths) * 1.0)
+
+    truths = truths_.copy()
+    trainPaths = trainPaths_.copy()
+    boundingBoxes = boundingBoxes_.copy()
+    types = types_.copy()
+    ########
+    """
+
+
     # For training
     dataset_Train = DataSetTrain(trainPaths[:separation], boundingBoxes[:separation], truths[:separation], types[:separation], demo=demo)
 
     dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=BATCH, shuffle=True,
-                                  drop_last=True, **conf_data_loading)
+                                  drop_last=False, **conf_data_loading)
 
     # For testing
     dataset_Test = DataSetTrain(trainPaths[separation:], boundingBoxes[separation:], truths[separation:], types[:separation], demo=demo)
