@@ -10,6 +10,7 @@ from PIL import Image
 from matplotlib import pyplot as plt, cm
 from pytorch_lightning import Trainer, seed_everything
 import pytorch_lightning as pl
+import torchvision
 ############################################################################
 from torch import nn, optim, profiler
 from tqdm import trange
@@ -191,8 +192,12 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
             correct += torch.sum(torch.argmax(label_pred, dim=1) == truth)
             mean_aps.append(meanAP(box, heat_pred, label_pred, truth))
             # prof.step()
-            del loss1, loss2, image, heat_resized, truth, box
 
+            # del loss1, loss2, image, heat_resized, truth, box
+
+
+        visualize(image, idx_pred=label_pred, idx_truth=truth, box_pred=heat_pred, box_truth=box,
+                  global_step=counter_test, writer=writer)
         loss1 = float(np.mean(np.array(losses1)))
         loss2 = float(np.mean(np.array(losses2)))
         mean_ap = float(np.mean(np.array(mean_aps)))
@@ -365,3 +370,31 @@ def rotateImage(img, box, option="left"):
     return shiftedIMG, box
 
 
+def visualize(imgs, idx_pred, idx_truth, box_pred, box_truth, writer, global_step):
+    idx_to_label = {
+        0: "negative",
+        1: "typical",
+        2: "indeterminate",
+        3: "atypical"
+    }
+    idx_pred = torch.argmax(idx_pred, dim=1)
+    label_pred = []
+    for idx in idx_pred:
+        label_pred.append(idx_to_label[idx.item()])
+
+    label_truth = []
+    for idx in idx_truth:
+        label_truth.append(idx_to_label[idx.item()])
+
+    for i in range(len(imgs)):
+        # TRUTH
+        imgs[i] = torchvision.utils.draw_bounding_boxes(imgs[i].cpu(), torch.unsqueeze(box_truth[i].cpu(), 0),
+                                                        label_truth[i], colors=['red'], fill=False, width=3,
+                                                        font_size=36)
+
+        # PREDICTION
+        imgs[i] = torchvision.utils.draw_bounding_boxes(imgs[i].cpu(), torch.unsqueeze(box_pred[i].cpu(), 0),
+                                                        label_pred[i], colors=['blue'], fill=False, width=3,
+                                                        font_size=36)
+
+    writer.add_images(tag='test/vis', img_tensor=imgs, global_step=global_step, dataformats='NCHW')
