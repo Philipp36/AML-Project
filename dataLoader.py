@@ -44,7 +44,6 @@ class DataSetTrain():
 
 
         image = cv2.resize(image_orig, (448, 448))
-        heat_orig = getHeatMap(torch.tensor(image_orig), torch.tensor(box))
         sx, sy, ex, ey = box
         x, y, _ = image.shape
         x1, y1, _ = image_orig.shape
@@ -55,13 +54,10 @@ class DataSetTrain():
         ex = ex * scaleY
         ey = ey * scaleX
         box_pred_origsize = np.array([sx, sy, ex, ey])
-        heat_resized = getHeatMap(torch.tensor(image), torch.tensor(numpy.array(box_pred_origsize)))
-
         if self.demo:
-            return np.moveaxis(image, -1, 0), heat_resized, int(truth), box_pred_origsize.astype(np.float32, copy=False), np.moveaxis(image_orig, -1, 0), heat_orig
-
+            return np.moveaxis(image, -1, 0), int(truth), box_pred_origsize.astype(np.float32, copy=False), np.moveaxis(image_orig, -1, 0)
         else:
-            return np.moveaxis(image, -1, 0), heat_resized, int(truth), box_pred_origsize.astype(np.float32, copy=False)
+            return np.moveaxis(image, -1, 0), int(truth), box_pred_origsize.astype(np.float32, copy=False)
 
 
     def __len__(self):

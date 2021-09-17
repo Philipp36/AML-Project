@@ -116,8 +116,8 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
         print(" Epoch:  ", epoch)
         iterator = iter(train_dataloader)
         for index in trange(0, len(train_dataloader)):
-            image, heat_resized, truth, box = iterator.next()
-            image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
+            image, truth, box = iterator.next()
+            image, truth, box = image.to(dev), truth.to(dev), box.to(dev)
             optimizer.zero_grad()
             heat_pred, label_pred = model(image)
 
@@ -143,7 +143,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
                 # losses1 = []
                 # losses2 = []
 
-            del LOSS, loss1, loss2, image, heat_resized, truth, box
+            del LOSS, loss1, loss2, image, truth, box
             # TESTING AND MODEL SAVING
             if index % test_interval == 0 and index > 2:
                 testLoop(model, test_dataloader, counter_test, writer, dev=dev)
@@ -176,8 +176,8 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
         mean_aps = []
         correct = 0
         for index in trange(0, len(test_dataloader)):
-            image, heat_resized, truth, box = iterator.next()
-            image, heat_resized, truth, box = image.to(dev), heat_resized.to(dev), truth.to(dev), box.to(dev)
+            image, truth, box = iterator.next()
+            image, truth, box = image.to(dev), truth.to(dev), box.to(dev)
             heat_pred, label_pred = model(image)
 
             heat_pred = torch.where(torch.unsqueeze(truth, 1).expand(-1, 4) == 0, box, heat_pred)
