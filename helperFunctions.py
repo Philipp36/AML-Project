@@ -246,7 +246,7 @@ def intersection_over_union(gt_box, pred_box):
 # Calculates the mean average precision
 def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
     # pred_box = getBoxFromHeatMap(pred_heatMap)
-    softmax = nn.Softmax()
+    softmax = nn.Softmax(dim=1)
     labelsPred = softmax(labelsPred)
     confidenceCorrectLabel = torch.tensor([labelsPred[i][labelsTrue[i]]  for i in range(0, len(labelsTrue))])
     iou, intersection, union, binaryIOU = intersection_over_union(gt_box, pred_box)
@@ -255,7 +255,7 @@ def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
     for limit in limits:
         corrects = 0
         for j in range(0, len(labelsTrue)):
-            if confidenceCorrectLabel[j] >=limit and (iou[j]<=0.5 or labelsTrue[j]==0):
+            if confidenceCorrectLabel[j] >=limit and (iou[j]>=0.5 or labelsTrue[j]==0):
                 corrects+=1
         precicion = corrects/len(labelsTrue)
         precicions.append(precicion)
