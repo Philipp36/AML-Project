@@ -3,6 +3,8 @@ import logging
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
+
+import helperFunctions
 from dataLoader import createDataset_300W_LP
 from helperFunctions import *
 from model import AmerModel
@@ -17,10 +19,17 @@ def main():
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(torch.cuda.is_available())
     torch.cuda.empty_cache()
-    train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
-                                                                               train_batch=config['train']['batch_size'],
-                                                                               test_batch=config['test']['batch_size'],
-                                                                               conf_data_loading=config['data_loading'])
+    transforms = helperFunctions.RandomChoice(transforms=[
+        helperFunctions.RandomRotationWithBox(degrees=(-90, 90)),
+        helperFunctions.RandomVerticalFlipWithBox(),
+        helperFunctions.RandomHorizontalFlipWithBox(),
+        helperFunctions.CenterCropWithBox(size=(425, 425))
+    ], p=0.4)
+    train_dataloader, test_dataloader, eval_dataloader = \
+        createDataset_300W_LP(**config['dataset'], train_batch=config['train']['batch_size'],
+                              test_batch=config['test']['batch_size'],
+                              conf_data_loading_train=config['train']['data_loading'],
+                              conf_data_loading_test=config['test']['data_loading'], transforms=transforms)
     print("#Train Batches:", len(train_dataloader),
           "#Test Batches:", len(test_dataloader),
           "#Eval Batches:", len(eval_dataloader))

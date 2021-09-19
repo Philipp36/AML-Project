@@ -10,11 +10,22 @@ from PIL import Image
 from matplotlib import pyplot as plt, cm
 from pytorch_lightning import Trainer, seed_everything
 import pytorch_lightning as pl
+from collections.abc import Sequence
 import torchvision
 ############################################################################
 from torch import nn, optim, profiler
+import torchvision.transforms.functional as F
 from tqdm import trange
 import cv2
+
+
+def rescale_box(box, img_size_orig, img_size_new):
+    orig_w, orig_h = img_size_orig
+    new_w, new_h = img_size_new
+    scale_x = new_w / orig_w
+    scale_y = new_h / orig_h
+    sx, sy, ex, ey = box
+    return [sx * scale_x, sy * scale_y, ex * scale_x, ey * scale_y]
 
 def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
 
@@ -94,8 +105,8 @@ def drawSample(IMG, IMG_ORIG, box_true, box_pred, originalSize = False):
 ############################################################################
 def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, pathModel, dev=torch.device('cpu')):
     # logging and testing parameters
-    logging_interval = 50
-    test_interval = 500
+    logging_interval = 20
+    test_interval = 50
 
     testLoop(model, test_dataloader, counter_test, writer, dev=dev)
     counter_test += 1
@@ -398,3 +409,120 @@ def visualize(imgs, idx_pred, idx_truth, box_pred, box_truth, writer, global_ste
                                                         font_size=36)
 
     writer.add_images(tag='test/vis', img_tensor=imgs, global_step=global_step, dataformats='NCHW')
+
+
+class RandomVerticalFlipWithBox(nn.Module):
+
+    def forward(self, img, box):
+        img = F.vflip(img)
+        xmin, ymin, xmax, ymax = box
+        _, img_h = F._get_image_size(img)
+        tmp = img_h - ymin
+        ymin = img_h - ymax
+        ymax = tmp
+        return img, (xmin, ymin, xmax, ymax)
+
+
+class RandomHorizontalFlipWithBox(nn.Module):
+
+    def forward(self, img, box):
+        img = F.hflip(img)
+        xmin, ymin, xmax, ymax = box
+        img_w, _ = F._get_image_size(img)
+        tmp = img_w - xmin
+        xmin = img_w - xmax
+        xmax = tmp
+        return img, (xmin, ymin, xmax, ymax)
+
+
+class CenterCropWithBox(torchvision.transforms.CenterCrop):
+    def __init__(self, size):
+        assert size[0] == size[1]
+        super().__init__(size)
+
+    def forward(self, img, box):
+        img_w, img_h = F._get_image_size(img)
+        resize_factor_x = self.size[0] / img_w
+        resize_factor_y = self.size[1] / img_h
+        [sx, sy, ex, ey] = box
+        sx -= ((1 - resize_factor_x) * img_w) // 2
+        ex -= ((1 - resize_factor_x) * img_w) // 2
+        sy -= ((1 - resize_factor_y) * img_h) // 2
+        ey -= ((1 - resize_factor_y) * img_h) // 2
+        box = rescale_box([sx, sy, ex, ey], self.size, F._get_image_size(img))
+        # TODO: return 0,0,1,1 if coordinates outside of cropped image
+        return F.resize(super().forward(img), (img_w, img_h)), box
+
+
+class RandomRotationWithBox(torchvision.transforms.RandomRotation):
+    def __init__(self, degrees, interpolation=torchvision.transforms.InterpolationMode.NEAREST, expand=False,
+                 center=None, fill=0, resample=None):
+        super().__init__(degrees, interpolation, expand, center, resample)
+
+    def forward(self, img, box):
+        """
+        Args:
+            img (PIL Image or Tensor): Image to be rotated.
+            box ([x,y,w,h]): Box to be rotated.
+
+        Returns:
+            PIL Image or Tensor: Rotated image.
+            Box Tensor: Rotated Box
+        """
+
+        fill = self.fill
+        if isinstance(img, torch.Tensor):
+            if isinstance(fill, (int, float)):
+                fill = [float(fill)] * F._get_image_num_channels(img)
+            else:
+                fill = [float(f) for f in fill]
+        angle = self.get_params(self.degrees)
+        img_w, img_h = F._get_image_size(img)
+        return F.rotate(img, angle, self.resample, self.expand, self.center, fill),\
+            rotate_bb(box, angle, img_w // 2, img_h // 2)
+
+
+class RandomChoice(nn.Module):
+    """Apply single transformation randomly picked from a list. This transform does not support torchscript.
+       """
+
+    def __init__(self, transforms, p_transforms=None, p=1):
+        if p_transforms is not None and not isinstance(p_transforms, Sequence):
+            raise TypeError("Argument transforms should be a sequence")
+        assert 0 <= p <= 1
+        self.p_transforms = p_transforms
+        self.transforms = transforms
+        self.p = p
+
+    def __call__(self, *args):
+        t = random.choices(self.transforms, weights=self.p_transforms)[0]
+        return t(*args) if torch.rand(1) < self.p else args
+
+    def __repr__(self):
+        format_string = super().__repr__()
+        format_string += '(p_transforms={0}, p={1})'.format(self.p_transforms, self.p)
+        return format_string
+
+
+def rotate_bb(box, angle, rotc_x, rotc_y):
+    xmin, ymin, xmax, ymax = box
+    coordinates = [(xmin, ymin), (xmin, ymax), (xmax, ymin), (xmax, ymax)]
+    coordinates = [rotate_coordinate(x, y, angle, rotc_x, rotc_y) for x, y in coordinates]
+    return get_bb_from_points(coordinates)
+
+
+def rotate_coordinate(x, y, angle, rotc_x, rotc_y):
+    rad = math.radians(angle)
+    return rotc_x + (x - rotc_x) * cos(rad) + (y - rotc_y) * sin(rad),\
+           rotc_y - (x - rotc_x) * sin(rad) + (y - rotc_y) * cos(rad)
+
+
+def get_bb_from_points(coordinates):
+    x_min = x_max = coordinates[0][0]
+    y_min = y_max = coordinates[0][1]
+    for x, y in coordinates[1:]:
+        x_min = min(x_min, x)
+        x_max = max(x_max, x)
+        y_min = min(y_min, y)
+        y_max = max(y_max, y)
+    return x_min, y_min, x_max, y_max

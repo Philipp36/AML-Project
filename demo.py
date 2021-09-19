@@ -5,6 +5,8 @@ import yaml
 import numpy as np
 import torch
 import logging
+
+import helperFunctions
 from dataLoader import createDataset_300W_LP
 from helperFunctions import *
 from model import model1, AmerModel
@@ -14,14 +16,23 @@ from model import model1, AmerModel
 
 
 def main():
+
+    transforms = helperFunctions.RandomChoice(transforms=[
+        #helperFunctions.RandomRotationWithBox(degrees=(-90, 90)),
+        #helperFunctions.RandomVerticalFlipWithBox(),
+        #helperFunctions.RandomHorizontalFlipWithBox(),
+        helperFunctions.CenterCropWithBox(size=(348, 348))
+    ], p=1)
     pretrained = config['model']['pretrained']
     model_path = config['model']['model_path']
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(torch.cuda.is_available())
     torch.cuda.empty_cache()
-    train_dataloader, test_dataloader, eval_dataloader = createDataset_300W_LP(**config['dataset'],
-                                                                               BATCH=config['train']['batch_size'],
-                                                                               conf_data_loading=config['data_loading'])
+    train_dataloader, test_dataloader, eval_dataloader = \
+        createDataset_300W_LP(**config['dataset'],
+                              train_batch=config['train']['batch_size'], test_batch=config['test']['batch_size'],
+                              conf_data_loading_train=config['train']['data_loading'],
+                              conf_data_loading_test=config['test']['data_loading'], transforms=transforms)
     print("#Train Batches:", len(train_dataloader), "#Test Batches:", len(test_dataloader), "#Eval Batches:",
           len(eval_dataloader))
 

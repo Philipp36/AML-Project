@@ -3,6 +3,8 @@ import random
 import os
 import csv
 import sys
+
+import PIL.Image
 from skimage import io, transform
 import cv2
 import numpy
@@ -11,6 +13,7 @@ import pydicom
 import torch
 import torchvision
 from matplotlib import pyplot as plt
+from matplotlib.patches import Rectangle
 from pydicom.pixel_data_handlers import apply_voi_lut
 from torch.utils.data import DataLoader
 import glob
@@ -20,50 +23,57 @@ from helperFunctions import *
 
 
 class DataSetTrain():
-    def __init__(self, trainPaths, boundingBoxes, truths, types, demo):
+    def __init__(self, trainPaths, boundingBoxes, truths, transforms=None):
         self.trainPaths = trainPaths
         self.boundingBoxes = boundingBoxes
         self.truths = truths
-        self.demo = demo
-        self.types = types
+        self.transforms = transforms
+        self.resize = (448, 448)
 
     def __getitem__(self, index):
         truth = self.truths[index]
-
-        image_orig = cv2.imread(self.trainPaths[index])
-        image_orig = Image.fromarray(image_orig.astype('uint8'), 'RGB')
         box = self.boundingBoxes[index]
 
-        if self.types[index] == 1:
-            image_orig, box = mirrorImage(image_orig, box)
-        elif self.types[index] == 2:
-            image_orig, box = rotateImage(image_orig, box, option="left")
-        elif self.types[index] == 3:
-            image_orig, box = rotateImage(image_orig, box, option="right")
-        image_orig = np.array(image_orig)
-
-
-        image = cv2.resize(image_orig, (448, 448))
+        # Load image
+        image = cv2.imread(self.trainPaths[index])
+        image = Image.fromarray(image.astype('uint8'), 'RGB')
+        img_orig_w, img_orig_h = image.size
+        # Resize Image + Box
+        image = image.resize(size=self.resize, resample=PIL.Image.BICUBIC)
+        img_res_w, img_res_h = image.size
+        # box = rescale_box(box, (x1, y1), (x, y))
         sx, sy, ex, ey = box
-        x, y, _ = image.shape
-        x1, y1, _ = image_orig.shape
-        scaleX = x / x1
-        scaleY = y / y1
+        scaleX = img_res_w / img_orig_w
+        scaleY = img_res_h / img_orig_h
         sx = sx * scaleY
         sy = sy * scaleX
         ex = ex * scaleY
         ey = ey * scaleX
-        box_pred_origsize = np.array([sx, sy, ex, ey])
-        if self.demo:
-            return np.moveaxis(image, -1, 0), int(truth), box_pred_origsize.astype(np.float32, copy=False), np.moveaxis(image_orig, -1, 0)
-        else:
-            return np.moveaxis(image, -1, 0), int(truth), box_pred_origsize.astype(np.float32, copy=False)
-
+        box = [sx, sy, ex, ey]
+        # Augmentate Image and Box
+        trans = torchvision.transforms.PILToTensor()
+        image = trans(image)
+        if self.transforms:
+            # fig, axs = plt.subplots(1, 2)
+            image, box = self.transforms(image, box)
+            # plot(image, box, axs[0], truth=True)
+            #plot(image_da, box_da, axs[1], truth=True)
+            # fig.show()
+        box = np.array(box)
+        return image, int(truth), box.astype(np.float32, copy=False)
 
     def __len__(self):
         return len(self.trainPaths)
 
 ################################################
+
+
+def plot(image, box, ax, truth):
+    color = 'red' if truth else 'blue'
+    ax.imshow(image.permute(1, 2, 0))
+    sx, sy, ex, ey = box
+    rect = Rectangle((sx, sy), width=abs(sx - ex), height=abs(sy - ey), fill=None, edgecolor=color)
+    ax.add_patch(rect)
 
 
 class DataSetTest():
@@ -83,7 +93,8 @@ class DataSetTest():
 
 
 def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_path, metadata_study_path, data_size=1.0,
-                          train_batch=16, test_batch=128, split=0.9, demo=False, conf_data_loading={}):
+                          train_batch=16, test_batch=128, split=0.9, conf_data_loading_train={},
+                          conf_data_loading_test={}, transforms=None):
     print("-> Load Data...")
 
     reader = csv.reader(open(metadata_image_path, 'r'))
@@ -149,39 +160,39 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
     separation = int(len(trainPaths) * split)
     # For augmentation
     val_data = (trainPaths[separation:], boundingBoxes[separation:], truths[separation:])
-    trainPaths, boundingBoxes, truths, types = addAugmentation(trainPaths[:separation], boundingBoxes[:separation], truths[:separation])
+    # trainPaths, boundingBoxes, truths, types = addAugmentation(trainPaths[:separation], boundingBoxes[:separation], truths[:separation])
 
     # Shuffle the data
-    c = list(zip(trainPaths, boundingBoxes, truths, types))
+    c = list(zip(trainPaths, boundingBoxes, truths))
     random.shuffle(c)
-    trainPaths, boundingBoxes, truths, types = zip(*c)
+    trainPaths, boundingBoxes, truths = zip(*c)
 
     # If we do not want to use 100% of the data
     lim = int(len(trainPaths) * data_size)
     trainPaths = trainPaths[:lim]
     boundingBoxes = boundingBoxes[:lim]
     truths = truths[:lim]
-    types = types[:lim]
 
     testPaths = testPaths[:int(len(testPaths) * data_size)]
 
 
     # For training
-    dataset_Train = DataSetTrain(trainPaths, boundingBoxes, truths, types, demo=demo)
+    dataset_Train = DataSetTrain(trainPaths, boundingBoxes, truths, transforms=transforms)
 
     dataloader_Train = DataLoader(dataset=dataset_Train, batch_size=train_batch, shuffle=True,
-                                  drop_last=True, **conf_data_loading)
+                                  drop_last=True, **conf_data_loading_train)
 
     # For testing
-    dataset_Test = DataSetTrain(*val_data, np.zeros(shape=(len(val_data[0]), 1)), demo=demo)
+    dataset_Test = DataSetTrain(*val_data)
     dataloader_Test = DataLoader(dataset=dataset_Test, batch_size=test_batch, shuffle=True,
-                                 drop_last=True, **conf_data_loading)
+                                 drop_last=True, **conf_data_loading_test)
 
     # For actual evaluation set
     dataset_Test_Eval = DataSetTest(testPaths)
     dataloader_Test_Eval = DataLoader(dataset=dataset_Test_Eval, batch_size=test_batch, shuffle=False, drop_last=True)
 
     return dataloader_Train, dataloader_Test, dataloader_Test_Eval
+
 
 def getCoordinatesFromBox(box):
     try:
@@ -192,6 +203,7 @@ def getCoordinatesFromBox(box):
         return np.array(boxes)[0]
     except:
         return np.array([0, 0, 1, 1])
+
 
 def dicom2array(path, voi_lut=True, fix_monochrome=True):
     dicom = pydicom.read_file(path)
@@ -205,6 +217,7 @@ def dicom2array(path, voi_lut=True, fix_monochrome=True):
     data = data / np.max(data)
     data = (data * 255).astype(np.uint8)
     return data
+
 
 def collate_fn(batch):
     batch = list(filter(lambda x: x is not None, batch))
