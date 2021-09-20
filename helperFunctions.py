@@ -6,6 +6,7 @@ from math import sin, cos
 import cv2
 import numpy as np
 import torch
+from torch import Tensor
 from PIL import Image
 from matplotlib import pyplot as plt, cm
 from pytorch_lightning import Trainer, seed_everything
@@ -105,13 +106,13 @@ def drawSample(IMG, IMG_ORIG, box_true, box_pred, originalSize = False):
 ############################################################################
 def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, counter_test, writer, pathModel, dev=torch.device('cpu')):
     # logging and testing parameters
-    logging_interval = 20
-    test_interval = 50
+    logging_interval = 30
+    test_interval = 75
 
     testLoop(model, test_dataloader, counter_test, writer, dev=dev)
     counter_test += 1
 
-    lossBoxes = nn.MSELoss()
+    lossBoxes = IoULoss()
     lossLabels = nn.CrossEntropyLoss()
     model.train()
     counter_train = 1
@@ -179,7 +180,7 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
         #                       profile_memory=True) as prof:
         model.eval()
         print("Test ", counter_test)
-        lossBoxes = nn.MSELoss()
+        lossBoxes = IoULoss()
         lossLabels = nn.CrossEntropyLoss()
         iterator = iter(test_dataloader)
         losses1 = []
@@ -526,3 +527,66 @@ def get_bb_from_points(coordinates):
         y_min = min(y_min, y)
         y_max = max(y_max, y)
     return x_min, y_min, x_max, y_max
+
+
+class IoULoss(nn.Module):
+
+    def __init__(self, reduction: str = 'mean') -> None:
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(self, pred_box: Tensor, gt_box: Tensor):
+        xmin_inter = torch.maximum(gt_box[:, 0], pred_box[:, 0])
+        ymin_inter = torch.maximum(gt_box[:, 1], pred_box[:, 1])
+        xmax_inter = torch.minimum(gt_box[:, 2], pred_box[:, 2])
+        ymax_inter = torch.minimum(gt_box[:, 3], pred_box[:, 3])
+        w_inter = torch.clamp(xmax_inter - xmin_inter, min=0)
+        h_inter = torch.clamp(ymax_inter - ymin_inter, min=0)
+        inter_area = w_inter * h_inter
+        gt_box_area = (gt_box[:, 2] - gt_box[:, 0]) * (gt_box[:, 3] - gt_box[:, 1])
+        pred_box_area = (pred_box[:, 2] - pred_box[:, 0]) * (pred_box[:, 3] - pred_box[:, 1])
+        union_area = gt_box_area + pred_box_area - inter_area
+        iou = inter_area / union_area
+        # iou = torch.where(iou != 0, -torch.log(iou), iou)
+        loss = 1 - iou
+        if self.reduction == 'none':
+            return loss
+        elif self.reduction == 'sum':
+            return torch.sum(loss)
+        else:
+            return torch.mean(loss)
+
+
+class GIoULoss(nn.Module):
+
+    def __init__(self, reduction: str = 'mean') -> None:
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(self, pred_box: Tensor, gt_box: Tensor):
+        xmin_inter = torch.maximum(gt_box[:, 0], pred_box[:, 0])
+        ymin_inter = torch.maximum(gt_box[:, 1], pred_box[:, 1])
+        xmax_inter = torch.minimum(gt_box[:, 2], pred_box[:, 2])
+        ymax_inter = torch.minimum(gt_box[:, 3], pred_box[:, 3])
+        w_inter = torch.clamp(xmax_inter - xmin_inter, min=0)
+        h_inter = torch.clamp(ymax_inter - ymin_inter, min=0)
+        inter_area = w_inter * h_inter
+        gt_box_area = (gt_box[:, 2] - gt_box[:, 0]) * (gt_box[:, 3] - gt_box[:, 1])
+        pred_box_area = (pred_box[:, 2] - pred_box[:, 0]) * (pred_box[:, 3] - pred_box[:, 1])
+        union_area = gt_box_area + pred_box_area - inter_area
+        iou = inter_area / union_area
+        # iou = torch.where(iou != 0, -torch.log(iou), iou)
+        # c_area is the smallest box enclosing the two bounding boxes
+        xmin_c = torch.minimum(gt_box[:, 0], pred_box[:, 0])
+        ymin_c = torch.minimum(gt_box[:, 1], pred_box[:, 1])
+        xmax_c = torch.maximum(gt_box[:, 2], pred_box[:, 2])
+        ymax_c = torch.maximum(gt_box[:, 3], pred_box[:, 3])
+        c_area = (xmax_c - xmin_c) * (ymax_c - ymin_c)
+        giou = iou - (c_area - union_area) / c_area
+        loss = 1 - giou
+        if self.reduction == 'none':
+            return loss
+        elif self.reduction == 'sum':
+            return torch.sum(loss)
+        else:
+            return torch.mean(loss)
