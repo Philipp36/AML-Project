@@ -40,21 +40,26 @@ class DataSetTrain():
         img_orig_w, img_orig_h = image.size
         heat = getHeatMap(img_orig_w, img_orig_h, boxes)
         # Resize Image + Box
-        plot(image, heat, boxes, True)
+        # fig, axs = plt.subplots(nrows=1, ncols=3)
+        # plot(image, heat, boxes, True, ax=axs[0])
         image = image.resize(size=self.resize, resample=PIL.Image.BICUBIC)
-        heat = heat.resize(size=self.resize, resample=PIL.Image.BICUBIC)
+        heat = cv2.resize(heat, self.resize)
+        heat = torch.from_numpy(heat)
+        heat = torch.unsqueeze(heat, 0)
+        # plot(image, heat.permute(1,2,0), [], True, ax=axs[1])
         img_res_w, img_res_h = image.size
         # Augmentate Image and Box
         trans = torchvision.transforms.PILToTensor()
         image = trans(image)
-        heat = trans(heat)
+        # heat = trans(heat)
         if self.transforms:
             # fig, axs = plt.subplots(1, 2)
-            image, box = self.transforms(image, heat)
+            image, heat = self.transforms(image, heat)
+            # plot(image.permute(1, 2, 0), heat, [], True, ax=axs[2])
             # plot(image, box, axs[0], truth=True)
             # plot(image_da, box_da, axs[1], truth=True)
-            # fig.show()
-        box = np.array(box)
+        # fig.show()
+        heat = torch.squeeze(heat)
         return image, int(truth), heat
 
     def __len__(self):
@@ -63,9 +68,10 @@ class DataSetTrain():
 ################################################
 
 
-def plot(image, heat, boxes, truth):
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
+def plot(image, heat, boxes, truth, ax=None):
+    if not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
     color = 'red' if truth else 'blue'
     ax.imshow(image)
     ax.imshow(heat, alpha=0.3, cmap='hot')
@@ -73,7 +79,8 @@ def plot(image, heat, boxes, truth):
         sx, sy, ex, ey = box
         rect = Rectangle((sx, sy), width=abs(sx - ex), height=abs(sy - ey), fill=None, edgecolor=color)
         ax.add_patch(rect)
-    fig.show()
+    if not ax:
+        fig.show()
 
 
 class DataSetTest():
@@ -156,16 +163,15 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
         boundingBoxes.append(box)
         truths.append(truth)
 
-    # Split training set into train and test
-    separation = int(len(trainPaths) * split)
-    # For augmentation
-    val_data = (trainPaths[separation:], boundingBoxes[separation:], truths[separation:])
-    # trainPaths, boundingBoxes, truths, types = addAugmentation(trainPaths[:separation], boundingBoxes[:separation], truths[:separation])
-
     # Shuffle the data
     c = list(zip(trainPaths, boundingBoxes, truths))
     random.shuffle(c)
     trainPaths, boundingBoxes, truths = zip(*c)
+
+    # Split training set into train and test
+    separation = int(len(trainPaths) * split)
+    val_data = (trainPaths[separation:], boundingBoxes[separation:], truths[separation:])
+    trainPaths, boundingBoxes, truths = trainPaths[:separation], boundingBoxes[:separation], truths[:separation]
 
     # If we do not want to use 100% of the data
     lim = int(len(trainPaths) * data_size)

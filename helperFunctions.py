@@ -128,16 +128,16 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
         print(" Epoch:  ", epoch)
         iterator = iter(train_dataloader)
         for index in trange(0, len(train_dataloader)):
-            image, truth, box = iterator.next()
-            image, truth, box = image.to(dev), truth.to(dev), box.to(dev)
+            image, truth, heat = iterator.next()
+            image, truth, heat = image.to(dev), truth.to(dev), heat.to(dev)
             optimizer.zero_grad()
             heat_pred, label_pred = model(image)
 
             for k in range(0, len(heat_pred)):
                 if truth[k] == 0:
-                    heat_pred[k] = box[k]
+                    heat_pred[k] = heat[k]
 
-            loss1 = lossBoxes(heat_pred, box)
+            loss1 = lossBoxes(heat_pred, heat)
             loss2 = lossLabels(label_pred, truth)
             LOSS = loss1 + loss2
             LOSS.backward()
@@ -155,7 +155,7 @@ def trainLoop(model, optimizer, epochs, train_dataloader, test_dataloader, count
                 # losses1 = []
                 # losses2 = []
 
-            del LOSS, loss1, loss2, image, truth, box
+            del LOSS, loss1, loss2, image, truth, heat
             # TESTING AND MODEL SAVING
             if index % test_interval == 0 and index > 2:
                 testLoop(model, test_dataloader, counter_test, writer, dev=dev)
@@ -188,34 +188,33 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
         mean_aps = []
         correct = 0
         for index in trange(0, len(test_dataloader)):
-            image, truth, box = iterator.next()
-            image, truth, box = image.to(dev), truth.to(dev), box.to(dev)
+            image, truth, heat = iterator.next()
+            image, truth, heat = image.to(dev), truth.to(dev), heat.to(dev)
             heat_pred, label_pred = model(image)
 
-            heat_pred = torch.where(torch.unsqueeze(truth, 1).expand(-1, 4) == 0, box, heat_pred)
-            # for k in range(0, len(heat_pred)):
-            #    if truth[k] == 0:
-            #        heat_pred[k] = box[k]
+            # heat_pred = torch.where(torch.unsqueeze(truth, 1).expand(-1, 4) == 0, box, heat_pred)
+            for k in range(0, len(heat_pred)):
+                if truth[k] == 0:
+                    heat_pred[k] = heat[k]
 
-            loss1 = lossBoxes(heat_pred, box)
+            loss1 = lossBoxes(heat_pred, heat)
             loss2 = lossLabels(label_pred, truth)
             losses1.append(loss1.item())
             losses2.append(loss2.item())
             correct += torch.sum(torch.argmax(label_pred, dim=1) == truth)
-            mean_aps.append(meanAP(box, heat_pred, label_pred, truth))
-            # prof.step()
+            #mean_aps.append(meanAP(box, heat_pred, label_pred, truth))
 
             # del loss1, loss2, image, heat_resized, truth, box
 
 
-        visualize(image, idx_pred=label_pred, idx_truth=truth, box_pred=heat_pred, box_truth=box,
+        visualize(image, idx_pred=label_pred, idx_truth=truth, heat_pred=heat_pred, boxes_truth=getBoxFromHeatMap(heat),
                   global_step=counter_test, writer=writer)
         loss1 = float(np.mean(np.array(losses1)))
         loss2 = float(np.mean(np.array(losses2)))
-        mean_ap = float(np.mean(np.array(mean_aps)))
+        #mean_ap = float(np.mean(np.array(mean_aps)))
         writer.add_scalar('BoxLoss/test/', loss1, counter_test)
         writer.add_scalar('LabelLoss/test/', loss2, counter_test)
-        writer.add_scalar('mean_ap/test/', mean_ap, counter_test)
+        #writer.add_scalar('mean_ap/test/', mean_ap, counter_test)
         iterator = iter(test_dataloader)
         batch_size = iterator.next()[0].size()[0]
         writer.add_scalar('val_acc/test', correct / (len(test_dataloader) * batch_size), counter_test)
@@ -279,26 +278,35 @@ def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
 ############################################################################
 
 def getBoxFromHeatMap(heatmap):
-    boxes = []
-    for heat in heatmap:
-        gray = heat[0].detach().numpy().astype(np.uint8)
+    boxes_batch = []
+    heatmap = heatmap.detach().cpu().numpy().astype(np.uint8)
+    for gray in heatmap:
         thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
         cnts = np.array(cnts)
-        try:
-            if len(cnts)>0:
-                cnts = cnts.reshape((cnts.shape[1], 2))
-                sx = cnts[0][0]
-                sy = cnts[0][1]
-                ex = cnts[-1][0]
-                ey = cnts[2][1]
-                boxes.append([sx, sy, ex, ey])
-            else:
-                boxes.append()
-        except:
-            return torch.tensor([[0,0, 1, 1]])
-    return torch.tensor(boxes)
+        boxes = []
+        for c in cnts:
+            x, y, w, h = cv2.boundingRect(c)
+            boxes.append([x, y, x + w, y + h])
+        if len(cnts) == 0:
+            boxes.append([0, 0, 1, 1])
+        boxes_batch.append(boxes)
+    return boxes_batch
+    #
+    #     try:
+    #         if len(cnts)>0:
+    #             cnts = cnts.reshape((cnts.shape[1], 2))
+    #             sx = cnts[0][0]
+    #             sy = cnts[0][1]
+    #             ex = cnts[-1][0]
+    #             ey = cnts[2][1]
+    #             boxes.append([sx, sy, ex, ey])
+    #         else:
+    #             boxes.append()
+    #     except:
+    #         return torch.tensor([[0,0, 1, 1]])
+    # return torch.tensor(boxes)
 
 ############################################################################
 
@@ -384,7 +392,7 @@ def rotateImage(img, box, option="left"):
     return shiftedIMG, box
 
 
-def visualize(imgs, idx_pred, idx_truth, box_pred, box_truth, writer, global_step):
+def visualize(imgs, idx_pred, idx_truth, heat_pred, boxes_truth, writer, global_step):
     idx_to_label = {
         0: "negative",
         1: "typical",
@@ -399,43 +407,56 @@ def visualize(imgs, idx_pred, idx_truth, box_pred, box_truth, writer, global_ste
     label_truth = []
     for idx in idx_truth:
         label_truth.append(idx_to_label[idx.item()])
-
+    images = []
     for i in range(len(imgs)):
         # TRUTH
-        imgs[i] = torchvision.utils.draw_bounding_boxes(imgs[i].cpu(), torch.unsqueeze(box_truth[i].cpu(), 0),
-                                                        label_truth[i], colors=['red'], fill=False, width=3,
-                                                        font_size=36)
+        img = imgs[i].cpu()
+        img = torchvision.utils.draw_bounding_boxes(img, torch.tensor(boxes_truth[i]), label_truth[i],
+                                                    colors=['red']*len(boxes_truth[i]), fill=False, width=3,
+                                                    font_size=36)
 
         # PREDICTION
-        imgs[i] = torchvision.utils.draw_bounding_boxes(imgs[i].cpu(), torch.unsqueeze(box_pred[i].cpu(), 0),
-                                                        label_pred[i], colors=['blue'], fill=False, width=3,
-                                                        font_size=36)
-
-    writer.add_images(tag='test/vis', img_tensor=imgs, global_step=global_step, dataformats='NCHW')
+        #img = torchvision.utils.draw_bounding_boxes(imgs[i].cpu(), torch.unsqueeze(boxes_pred[i].cpu(), 0),
+        #                                                label_pred[i], colors=['blue'], fill=False, width=3,
+        #                                                font_size=36)
+        # DRAW HEATMAP
+        hp = torch.unsqueeze(heat_pred[i], 0).detach().cpu()
+        hp_size = list(hp.size())
+        hp = torch.cat((hp, torch.zeros(size=(3 - hp_size[0], *hp_size[1:]))))
+        img = F.to_pil_image(img)
+        hp = F.to_pil_image(hp)
+        img = Image.blend(img, hp, alpha=0.2)
+        img = F.to_tensor(img)
+        images.append(torch.unsqueeze(img, dim=0))
+        writer.add_images(tag='test/vis', img_tensor=torch.cat(images, dim=0), global_step=global_step, dataformats='NCHW')
 
 
 class RandomVerticalFlipWithBox(nn.Module):
 
-    def forward(self, img, box):
-        img = F.vflip(img)
-        xmin, ymin, xmax, ymax = box
-        _, img_h = F._get_image_size(img)
-        tmp = img_h - ymin
-        ymin = img_h - ymax
-        ymax = tmp
-        return img, (xmin, ymin, xmax, ymax)
+    @torch.no_grad()
+    def forward(self, img, heat):
+        # img = F.vflip(img)
+        # xmin, ymin, xmax, ymax = box
+        # _, img_h = F._get_image_size(img)
+        # tmp = img_h - ymin
+        # ymin = img_h - ymax
+        # ymax = tmp
+        # return img, (xmin, ymin, xmax, ymax)
+        return F.vflip(img), F.vflip(heat)
 
 
 class RandomHorizontalFlipWithBox(nn.Module):
 
-    def forward(self, img, box):
-        img = F.hflip(img)
-        xmin, ymin, xmax, ymax = box
-        img_w, _ = F._get_image_size(img)
-        tmp = img_w - xmin
-        xmin = img_w - xmax
-        xmax = tmp
-        return img, (xmin, ymin, xmax, ymax)
+    @torch.no_grad()
+    def forward(self, img, heat):
+        #img = F.hflip(img)
+        #xmin, ymin, xmax, ymax = box
+        #img_w, _ = F._get_image_size(img)
+        #tmp = img_w - xmin
+        #xmin = img_w - xmax
+        #xmax = tmp
+        #return img, (xmin, ymin, xmax, ymax)
+        return F.hflip(img), F.hflip(heat)
 
 
 class CenterCropWithBox(torchvision.transforms.CenterCrop):
@@ -443,18 +464,20 @@ class CenterCropWithBox(torchvision.transforms.CenterCrop):
         assert size[0] == size[1]
         super().__init__(size)
 
-    def forward(self, img, box):
+    @torch.no_grad()
+    def forward(self, img, heat):
         img_w, img_h = F._get_image_size(img)
-        resize_factor_x = self.size[0] / img_w
-        resize_factor_y = self.size[1] / img_h
-        [sx, sy, ex, ey] = box
-        sx -= ((1 - resize_factor_x) * img_w) // 2
-        ex -= ((1 - resize_factor_x) * img_w) // 2
-        sy -= ((1 - resize_factor_y) * img_h) // 2
-        ey -= ((1 - resize_factor_y) * img_h) // 2
-        box = rescale_box([sx, sy, ex, ey], self.size, F._get_image_size(img))
+        # resize_factor_x = self.size[0] / img_w
+        # resize_factor_y = self.size[1] / img_h
+        # [sx, sy, ex, ey] = box
+        # sx -= ((1 - resize_factor_x) * img_w) // 2
+        # ex -= ((1 - resize_factor_x) * img_w) // 2
+        # sy -= ((1 - resize_factor_y) * img_h) // 2
+        # ey -= ((1 - resize_factor_y) * img_h) // 2
+        # box = rescale_box([sx, sy, ex, ey], self.size, F._get_image_size(img))
         # TODO: return 0,0,1,1 if coordinates outside of cropped image
-        return F.resize(super().forward(img), (img_w, img_h)), box
+        return F.resize(super().forward(img), (img_h, img_w)),\
+            F.resize(super().forward(heat), (img_h, img_w)),
 
 
 class RandomRotationWithBox(torchvision.transforms.RandomRotation):
@@ -462,7 +485,8 @@ class RandomRotationWithBox(torchvision.transforms.RandomRotation):
                  center=None, fill=0, resample=None):
         super().__init__(degrees, interpolation, expand, center, resample)
 
-    def forward(self, img, box):
+    @torch.no_grad()
+    def forward(self, img, heat):
         """
         Args:
             img (PIL Image or Tensor): Image to be rotated.
@@ -473,20 +497,26 @@ class RandomRotationWithBox(torchvision.transforms.RandomRotation):
             Box Tensor: Rotated Box
         """
 
-        fill = self.fill
+        fill_img = fill_heat = self.fill
         if isinstance(img, torch.Tensor):
-            if isinstance(fill, (int, float)):
-                fill = [float(fill)] * F._get_image_num_channels(img)
+            if isinstance(fill_img, (int, float)):
+                fill = [float(fill_img)] * F._get_image_num_channels(img)
             else:
-                fill = [float(f) for f in fill]
+                fill = [float(f) for f in fill_img]
+        if isinstance(heat, torch.Tensor):
+            if isinstance(fill_heat, (int, float)):
+                fill = [float(fill_heat)] * F._get_image_num_channels(img)
+            else:
+                fill = [float(f) for f in fill_heat]
         angle = self.get_params(self.degrees)
-        img_w, img_h = F._get_image_size(img)
-        return F.rotate(img, angle, self.resample, self.expand, self.center, fill),\
-            rotate_bb(box, angle, img_w // 2, img_h // 2)
+        # img_w, img_h = F._get_image_size(img)
+        return F.rotate(img, angle, self.resample, self.expand, self.center, fill_img), \
+            F.rotate(heat, angle, self.resample, self.expand, self.center, fill_heat)
+            #rotate_bb(box, angle, img_w // 2, img_h // 2)
 
 
 class RandomChoice(nn.Module):
-    """Apply single transformation randomly picked from a list. This transform does not support torchscript.
+    """Apply single transformation with a probability of p randomly picked from a list.
        """
 
     def __init__(self, transforms, p_transforms=None, p=1):
