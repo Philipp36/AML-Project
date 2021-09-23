@@ -225,14 +225,16 @@ def testLoop(model, test_dataloader, counter_test, writer, dev=torch.device('cpu
 
 ############################################################################
 
-def getHeatMap(img, box):
+def getHeatMap(size_w, size_h, boxes):
     kernel = np.array([[0, 0, 1, 0, 0],[0, 1, 1, 1, 0],[1, 1, 1, 1, 1],[0, 1, 1, 1, 0],[0, 0, 1, 0, 0]]).astype(np.uint8)
-    heat = torch.zeros(img.shape[:2])
-    sy, sx, ey, ex = box
-    sx, sy, ex, ey = int(sx), int(sy), int(ex), int(ey)
-    heat[sx:ex, sy:ey] += 1
+    heat = torch.zeros(size=(size_h, size_w))
+    for box in boxes:
+        sx, sy, ex, ey = box
+        # TODO: look up direction of tensor in y-axis
+        sx, sy, ex, ey = int(sx), int(sy), int(ex), int(ey)
+        heat[sy:ey, sx:ex] += 1
     heat = cv2.dilate(np.float32(heat), kernel= kernel, iterations=1)
-    heat = cv2.GaussianBlur(np.array(heat) ,(5, 5), sigmaX=0)
+    heat = cv2.GaussianBlur(np.array(heat), (5, 5), sigmaX=0)
     return heat
 ############################################################################
 

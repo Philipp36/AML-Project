@@ -32,35 +32,30 @@ class DataSetTrain():
 
     def __getitem__(self, index):
         truth = self.truths[index]
-        box = self.boundingBoxes[index]
+        boxes = self.boundingBoxes[index]
 
         # Load image
         image = cv2.imread(self.trainPaths[index])
         image = Image.fromarray(image.astype('uint8'), 'RGB')
         img_orig_w, img_orig_h = image.size
+        heat = getHeatMap(img_orig_w, img_orig_h, boxes)
         # Resize Image + Box
+        plot(image, heat, boxes, True)
         image = image.resize(size=self.resize, resample=PIL.Image.BICUBIC)
+        heat = heat.resize(size=self.resize, resample=PIL.Image.BICUBIC)
         img_res_w, img_res_h = image.size
-        # box = rescale_box(box, (x1, y1), (x, y))
-        sx, sy, ex, ey = box
-        scaleX = img_res_w / img_orig_w
-        scaleY = img_res_h / img_orig_h
-        sx = sx * scaleY
-        sy = sy * scaleX
-        ex = ex * scaleY
-        ey = ey * scaleX
-        box = [sx, sy, ex, ey]
         # Augmentate Image and Box
         trans = torchvision.transforms.PILToTensor()
         image = trans(image)
+        heat = trans(heat)
         if self.transforms:
             # fig, axs = plt.subplots(1, 2)
-            image, box = self.transforms(image, box)
+            image, box = self.transforms(image, heat)
             # plot(image, box, axs[0], truth=True)
-            #plot(image_da, box_da, axs[1], truth=True)
+            # plot(image_da, box_da, axs[1], truth=True)
             # fig.show()
         box = np.array(box)
-        return image, int(truth), box.astype(np.float32, copy=False)
+        return image, int(truth), heat
 
     def __len__(self):
         return len(self.trainPaths)
@@ -68,12 +63,17 @@ class DataSetTrain():
 ################################################
 
 
-def plot(image, box, ax, truth):
+def plot(image, heat, boxes, truth):
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
     color = 'red' if truth else 'blue'
-    ax.imshow(image.permute(1, 2, 0))
-    sx, sy, ex, ey = box
-    rect = Rectangle((sx, sy), width=abs(sx - ex), height=abs(sy - ey), fill=None, edgecolor=color)
-    ax.add_patch(rect)
+    ax.imshow(image)
+    ax.imshow(heat, alpha=0.3, cmap='hot')
+    for box in boxes:
+        sx, sy, ex, ey = box
+        rect = Rectangle((sx, sy), width=abs(sx - ex), height=abs(sy - ey), fill=None, edgecolor=color)
+        ax.add_patch(rect)
+    fig.show()
 
 
 class DataSetTest():
@@ -200,9 +200,9 @@ def getCoordinatesFromBox(box):
         boxes = []
         for b in box:
             boxes.append([b["x"], b["y"], b["x"]+b["width"], b["y"]+b["height"]])
-        return np.array(boxes)[0]
+        return np.array(boxes)
     except:
-        return np.array([0, 0, 1, 1])
+        return np.array([[0, 0, 1, 1]])
 
 
 def dicom2array(path, voi_lut=True, fix_monochrome=True):
