@@ -1,4 +1,5 @@
 import ast
+import pickle
 import random
 import os
 import csv
@@ -163,21 +164,48 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
         boundingBoxes.append(box)
         truths.append(truth)
 
+    ###
+    """
     # Shuffle the data
     c = list(zip(trainPaths, boundingBoxes, truths))
     random.shuffle(c)
     trainPaths, boundingBoxes, truths = zip(*c)
 
-    # Split training set into train and test
-    separation = int(len(trainPaths) * split)
+    trainPaths_FILE = "trainPaths.pkl"
+    open_file = open(trainPaths_FILE, "wb")
+    pickle.dump(trainPaths, open_file)
+    open_file.close()
+
+    boundingBoxes_FILE = "boundingBoxes.pkl"
+    open_file = open(boundingBoxes_FILE, "wb")
+    pickle.dump(boundingBoxes, open_file)
+    open_file.close()
+
+    truthsFile = "truths.pkl"
+    open_file = open(truthsFile, "wb")
+    pickle.dump(truths, open_file)
+    open_file.close()
+    """
+
+    open_file = open("trainPaths.pkl", "rb")
+    relPaths = pickle.load(open_file)
+    open_file.close()
+    # JOIN BASE_PATH TO
+    trainPaths = [os.path.join(dataset_train_path, rel_path) for rel_path in relPaths]
+
+    open_file = open("boundingBoxes.pkl", "rb")
+    boundingBoxes = pickle.load(open_file)
+    open_file.close()
+
+    open_file = open("truths.pkl", "rb")
+    truths = pickle.load(open_file)
+    open_file.close()
+    ###
+
+    separation = int(len(trainPaths) * 0.8)
     val_data = (trainPaths[separation:], boundingBoxes[separation:], truths[separation:])
     trainPaths, boundingBoxes, truths = trainPaths[:separation], boundingBoxes[:separation], truths[:separation]
 
-    # If we do not want to use 100% of the data
-    lim = int(len(trainPaths) * data_size)
-    trainPaths = trainPaths[:lim]
-    boundingBoxes = boundingBoxes[:lim]
-    truths = truths[:lim]
 
     testPaths = testPaths[:int(len(testPaths) * data_size)]
 
