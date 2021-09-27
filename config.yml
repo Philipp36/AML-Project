@@ -5,27 +5,27 @@ dataset:
   metadata_image_path: ../../data/siim-covid19-detection/train_image_level.csv
   metadata_study_path: ../../data/siim-covid19-detection/train_study_level.csv
   split: 0.8 # currently used for validation split
-  demo: False
   data_size: 1
 
 model:
   model_name: Amer
-  model_path: weights/model.pth # TODO: split up into model path and weights or checkpoint path?
+  model_path: weights/model.pth
   # if set to True, tries to load weights stored at model_path
   pretrained: False
 
 optimizer:
-  lr: 1.0e-3
+  lr: 1.0e-4
   eps: 1.0e-8
 
 train:
-  batch_size: 16
-  epochs: 50
-  validation_split: 0.8 # currently not used # TODO: implement
+  batch_size: 12
+  epochs: 10
+  data_loading:
+    num_workers: 16
+    pin_memory: True
 
 test:
-  batch_size: 2 # currently not used (same as train/batch_size)
-
-data_loading:
-  num_workers: 8
-  pin_memory: True
+  batch_size: 12
+  data_loading:
+      num_workers: 16
+      pin_memory: True
