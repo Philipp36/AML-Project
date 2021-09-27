@@ -1,29 +1,23 @@
 import ast
 import pickle
-import random
-import os
 import csv
-import sys
-
-import PIL.Image
-from skimage import io, transform
-import cv2
-import numpy
-import numpy as np
-import pydicom
-import torch
-import torchvision
-from matplotlib import pyplot as plt
-from matplotlib.patches import Rectangle
-from pydicom.pixel_data_handlers import apply_voi_lut
-from torch.utils.data import DataLoader
 import glob
+import numpy as np
+import os
+
+import torch
+from torch.utils.data import DataLoader, Dataset
+from torchvision.transforms.functional import pil_to_tensor
+
+import pydicom
+import cv2
 from PIL import Image
-################################################
-from helperFunctions import *
+from pydicom.pixel_data_handlers import apply_voi_lut
+
+from helperFunctions import getHeatMap
 
 
-class DataSetTrain():
+class DataSetTrain(Dataset):
     def __init__(self, trainPaths, boundingBoxes, truths, transforms=None):
         self.trainPaths = trainPaths
         self.boundingBoxes = boundingBoxes
@@ -39,52 +33,27 @@ class DataSetTrain():
         image = cv2.imread(self.trainPaths[index])
         image = Image.fromarray(image.astype('uint8'), 'RGB')
         img_orig_w, img_orig_h = image.size
-        heat = getHeatMap(img_orig_w, img_orig_h, boxes)
+        if np.array_equal(boxes, np.array([[0, 0, 1, 1]])):
+            heat = np.zeros((img_orig_h, img_orig_w), dtype=np.float32)
+        else:
+            heat = getHeatMap(img_orig_w, img_orig_h, boxes)
         # Resize Image + Box
-        # fig, axs = plt.subplots(nrows=1, ncols=3)
-        # plot(image, heat, boxes, True, ax=axs[0])
-        image = image.resize(size=self.resize, resample=PIL.Image.BICUBIC)
+        image = image.resize(size=self.resize, resample=Image.BICUBIC)
         heat = cv2.resize(heat, self.resize)
         heat = torch.from_numpy(heat)
         heat = torch.unsqueeze(heat, 0)
-        # plot(image, heat.permute(1,2,0), [], True, ax=axs[1])
-        img_res_w, img_res_h = image.size
         # Augmentate Image and Box
-        trans = torchvision.transforms.PILToTensor()
-        image = trans(image)
-        # heat = trans(heat)
+        image = pil_to_tensor(image)
         if self.transforms:
-            # fig, axs = plt.subplots(1, 2)
             image, heat = self.transforms(image, heat)
-            # plot(image.permute(1, 2, 0), heat, [], True, ax=axs[2])
-            # plot(image, box, axs[0], truth=True)
-            # plot(image_da, box_da, axs[1], truth=True)
-        # fig.show()
         heat = torch.squeeze(heat)
         return image, int(truth), heat
 
     def __len__(self):
         return len(self.trainPaths)
 
-################################################
 
-
-def plot(image, heat, boxes, truth, ax=None):
-    if not ax:
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-    color = 'red' if truth else 'blue'
-    ax.imshow(image)
-    ax.imshow(heat, alpha=0.3, cmap='hot')
-    for box in boxes:
-        sx, sy, ex, ey = box
-        rect = Rectangle((sx, sy), width=abs(sx - ex), height=abs(sy - ey), fill=None, edgecolor=color)
-        ax.add_patch(rect)
-    if not ax:
-        fig.show()
-
-
-class DataSetTest():
+class DataSetTest(Dataset):
     def __init__(self, trainPaths):
         self.trainPaths = trainPaths
 
@@ -97,8 +66,6 @@ class DataSetTest():
     def __len__(self):
         return len(self.trainPaths)
 
-################################################
-
 
 def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_path, metadata_study_path, data_size=1.0,
                           train_batch=16, test_batch=128, split=0.9, conf_data_loading_train={},
@@ -106,38 +73,36 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
     print("-> Load Data...")
 
     reader = csv.reader(open(metadata_image_path, 'r'))
-    id=[]
-    boxes=[]
-    label=[]
-    studyID=[]
+    id = []
+    boxes = []
+    label = []
+    studyID = []
     counter = 0
     for row in reader:
-        if counter !=0:
+        if counter != 0:
             id.append(row[0])
             boxes.append(row[1])
             label.append(row[2])
             studyID.append(row[3])
-        counter +=1
+        counter += 1
 
     reader = csv.reader(open(metadata_study_path, 'r'))
     counter = 0
 
-    id_label=[]
-    trueLabels=[]
+    id_label = []
+    trueLabels = []
     for row in reader:
         if counter !=0:
             for i in range(1, len(row)):
-                if int(row[i])==1:
+                if int(row[i]) == 1:
                     trueLabels.append(i-1)
                     id_label.append(str(os.path.basename(row[0])).replace("_study", ""))
-        counter +=1
+        counter += 1
 
 
     testPaths=[]
     testImages = []
-    # for folder in os.scandir(dataset_test_path):
-    #    for subfolder in os.scandir(folder):
-    #        for file in os.scandir(subfolder):
+
     for path in glob.glob(dataset_test_path + "/**/*.png", recursive=True):
         testPaths.append(path)
         testImages.append(str(os.path.basename(path)).replace(".png", "_image"))
@@ -148,10 +113,6 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
     truths = []
     counter = 0
     for path in glob.glob(dataset_train_path + "/**/*.png", recursive=True):
-    # for folder in os.scandir(dataset_train_path):
-    #    for subfolder in os.scandir(folder):
-    #         for file in os.scandir(subfolder):
-        # path = file.path
         trainPaths.append(path)
         image = str(os.path.basename(path)).replace(".png", "_image")
         trainImages.append(image)
@@ -163,29 +124,6 @@ def createDataset_300W_LP(dataset_train_path, dataset_test_path, metadata_image_
         truth = trueLabels[INDEX2]
         boundingBoxes.append(box)
         truths.append(truth)
-
-    ###
-    """
-    # Shuffle the data
-    c = list(zip(trainPaths, boundingBoxes, truths))
-    random.shuffle(c)
-    trainPaths, boundingBoxes, truths = zip(*c)
-
-    trainPaths_FILE = "trainPaths.pkl"
-    open_file = open(trainPaths_FILE, "wb")
-    pickle.dump(trainPaths, open_file)
-    open_file.close()
-
-    boundingBoxes_FILE = "boundingBoxes.pkl"
-    open_file = open(boundingBoxes_FILE, "wb")
-    pickle.dump(boundingBoxes, open_file)
-    open_file.close()
-
-    truthsFile = "truths.pkl"
-    open_file = open(truthsFile, "wb")
-    pickle.dump(truths, open_file)
-    open_file.close()
-    """
 
     open_file = open("trainPaths.pkl", "rb")
     relPaths = pickle.load(open_file)
@@ -251,8 +189,3 @@ def dicom2array(path, voi_lut=True, fix_monochrome=True):
     data = data / np.max(data)
     data = (data * 255).astype(np.uint8)
     return data
-
-
-def collate_fn(batch):
-    batch = list(filter(lambda x: x is not None, batch))
-    return torch.utils.data.dataloader.default_collate(batch)

@@ -23,14 +23,12 @@ class BaselineClass(torch.nn.Module):
 
 def plot_confusion_matrix(df_confusion, labels, path, title='Confusion matrix', cmap=plt.cm.gray_r):
     plt.matshow(df_confusion, cmap=cmap)
-    #plt.title(title)
+    plt.title(title)
     plt.colorbar()
     tick_marks = np.arange(len(df_confusion[0]))
     plt.xticks(tick_marks, labels, rotation=45)
     plt.yticks(tick_marks[::-1], labels[::-1])
-    #plt.tight_layout()
-    #plt.ylabel(df_confusion.index.name)
-    #plt.xlabel(df_confusion.columns.name)
+    plt.tight_layout()
     plt.savefig(os.path.join(path, 'confusion_matrix.png'), dpi=300, bbox_inches='tight')
 
 if __name__ == '__main__':

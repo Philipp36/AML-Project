@@ -7,7 +7,7 @@ from torchvision import models
 
 class AmerBackbone(nn.Module):
 
-    def __init__(self):
+    def  __init__(self):
         super(AmerBackbone, self).__init__()
 
         backbone = models.resnet18(pretrained=True, progress=True)
