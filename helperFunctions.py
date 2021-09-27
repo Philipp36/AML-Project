@@ -409,9 +409,9 @@ def visualize(imgs, idx_pred, idx_truth, heat_pred, boxes_truth, writer, global_
         label_truth.append(idx_to_label[idx.item()])
     images = []
     for i in range(len(imgs)):
-        # TRUTH
+        # TRUTH BOUNDING BOX
         img = imgs[i].cpu()
-        img = torchvision.utils.draw_bounding_boxes(img, torch.tensor(boxes_truth[i]), label_truth[i],
+        img = torchvision.utils.draw_bounding_boxes(img, torch.tensor(boxes_truth[i]),
                                                     colors=['red']*len(boxes_truth[i]), fill=False, width=3,
                                                     font_size=36)
 
@@ -422,10 +422,17 @@ def visualize(imgs, idx_pred, idx_truth, heat_pred, boxes_truth, writer, global_
         # DRAW HEATMAP
         hp = torch.unsqueeze(heat_pred[i], 0).detach().cpu()
         hp_size = list(hp.size())
-        hp = torch.cat((hp, torch.zeros(size=(3 - hp_size[0], *hp_size[1:]))))
+        hp = torch.cat((torch.zeros(size=(3 - hp_size[0], *hp_size[1:])), hp))
         img = F.to_pil_image(img)
         hp = F.to_pil_image(hp)
         img = Image.blend(img, hp, alpha=0.2)
+
+        # DRAW LABELS
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.truetype('OpenSans-Bold.ttf', size=20)
+        draw.text((10, 0), label_truth[i], font=font, fill=(255, 0, 0, 255))
+        draw.text((10, 30), label_pred[i], font=font, fill=(0, 0, 255, 255))
+
         img = F.to_tensor(img)
         images.append(torch.unsqueeze(img, dim=0))
         writer.add_images(tag='test/vis', img_tensor=torch.cat(images, dim=0), global_step=global_step, dataformats='NCHW')
