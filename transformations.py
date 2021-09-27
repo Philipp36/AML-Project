@@ -21,13 +21,6 @@ class VerticalFlip(nn.Module):
              PIL Image or Tensor: Flipped image.
              heat Tensor: Flipped heatmap
          """
-        # img = F.vflip(img)
-        # xmin, ymin, xmax, ymax = box
-        # _, img_h = F._get_image_size(img)
-        # tmp = img_h - ymin
-        # ymin = img_h - ymax
-        # ymax = tmp
-        # return img, (xmin, ymin, xmax, ymax)
         return F.vflip(img), F.vflip(heat)
 
 
@@ -46,13 +39,6 @@ class HorizontalFlip(nn.Module):
             PIL Image or Tensor: Flipped image.
             heat Tensor: Flipped heatmap
         """
-        #img = F.hflip(img)
-        #xmin, ymin, xmax, ymax = box
-        #img_w, _ = F._get_image_size(img)
-        #tmp = img_w - xmin
-        #xmin = img_w - xmax
-        #xmax = tmp
-        #return img, (xmin, ymin, xmax, ymax)
         return F.hflip(img), F.hflip(heat)
 
 
@@ -76,14 +62,6 @@ class CenterCrop(CenterCrop):
             heat Tensor: Cropped heatmap
         """
         img_w, img_h = F._get_image_size(img)
-        # resize_factor_x = self.size[0] / img_w
-        # resize_factor_y = self.size[1] / img_h
-        # [sx, sy, ex, ey] = box
-        # sx -= ((1 - resize_factor_x) * img_w) // 2
-        # ex -= ((1 - resize_factor_x) * img_w) // 2
-        # sy -= ((1 - resize_factor_y) * img_h) // 2
-        # ey -= ((1 - resize_factor_y) * img_h) // 2
-        # box = rescale_box([sx, sy, ex, ey], self.size, F._get_image_size(img))
         return F.resize(super().forward(img), (img_h, img_w)),\
             F.resize(super().forward(heat), (img_h, img_w)),
 
@@ -117,10 +95,8 @@ class RandomRotation(RandomRotation):
             else:
                 fill = [float(f) for f in fill_heat]
         angle = self.get_params(self.degrees)
-        # img_w, img_h = F._get_image_size(img)
         return F.rotate(img, angle, self.resample, self.expand, self.center, fill_img), \
             F.rotate(heat, angle, self.resample, self.expand, self.center, fill_heat)
-            #rotate_bb(box, angle, img_w // 2, img_h // 2)
 
 
 class RandomChoice(nn.Module):
