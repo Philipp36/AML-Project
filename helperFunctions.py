@@ -21,6 +21,9 @@ import cv2
 
 
 def rescale_box(box, img_size_orig, img_size_new):
+    """
+        rescales box for visualization and inference
+    """
     orig_w, orig_h = img_size_orig
     new_w, new_h = img_size_new
     scale_x = new_w / orig_w
@@ -28,8 +31,11 @@ def rescale_box(box, img_size_orig, img_size_new):
     sx, sy, ex, ey = box
     return [sx * scale_x, sy * scale_y, ex * scale_x, ey * scale_y]
 
-def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
 
+def rescaleBox(box_pred, box_true, img, imageOrig, transformPredicted = False):
+    """
+        rescales box for visualization and inference
+    """
     # Transform the predicted Box
     if transformPredicted:
         sx, sy, ex, ey = box_pred
@@ -254,10 +260,11 @@ def intersection_over_union(gt_box, pred_box):
     binaryIOU = iou.ge(0.5).int()
     return iou, intersection, union, binaryIOU
 
-############################################################################
 
-# Calculates the mean average precision
 def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
+    """
+        function used to calculate the mean average precision metric
+    """
     # pred_box = getBoxFromHeatMap(pred_heatMap)
     softmax = nn.Softmax(dim=1)
     labelsPred = softmax(labelsPred)
@@ -268,23 +275,28 @@ def meanAP(gt_box, pred_box, labelsPred, labelsTrue):
     for limit in limits:
         corrects = 0
         for j in range(0, len(labelsTrue)):
-            if confidenceCorrectLabel[j] >=limit and (iou[j]>=0.5 or labelsTrue[j]==0):
-                corrects+=1
+            if confidenceCorrectLabel[j] >= limit and (iou[j] >= 0.5 or labelsTrue[j] == 0):
+                corrects += 1
         precicion = corrects/len(labelsTrue)
         precicions.append(precicion)
     mAP = np.mean(np.array(precicions))
     return mAP
 
-############################################################################
 
 def getBoxFromHeatMap(heatmap):
+    """
+        function used to convert heatmaps to bounding boxes (batch wise)
+        Args:
+            heatmap: Tensor containing heatmaps in format [N, H, W]
+        Returns:
+            boxes_batch: list containing list of all boxes found in corresponding heatmap
+    """
     boxes_batch = []
     heatmap = heatmap.detach().cpu().numpy().astype(np.uint8)
     for gray in heatmap:
         thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-        cnts = np.array(cnts)
         boxes = []
         for c in cnts:
             x, y, w, h = cv2.boundingRect(c)
@@ -393,6 +405,9 @@ def rotateImage(img, box, option="left"):
 
 
 def visualize(imgs, idx_pred, idx_truth, heat_pred, boxes_truth, writer, global_step):
+    """
+        visualization used to display inference in Tensorboard
+    """
     idx_to_label = {
         0: "negative",
         1: "typical",
